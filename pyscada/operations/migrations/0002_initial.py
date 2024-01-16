@@ -6,8 +6,6 @@ import pyscada.models
 
 
 class Migration(migrations.Migration):
-    initial = True
-
     dependencies = [
         ("pyscada", "0107_alter_calculatedvariableselector_period_fields"),
         ("operations", "0001_add_device_protocol"),

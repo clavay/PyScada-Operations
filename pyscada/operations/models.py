@@ -3,19 +3,20 @@ from django.forms.models import BaseInlineFormSet
 from django.core.exceptions import ValidationError
 from django.utils.safestring import mark_safe
 from django.utils.timezone import now
+from django import forms
+from django.utils.timezone import now, make_aware, is_naive
 
 from pyscada.models import (
     DataSource,
     DataSourceModel,
     Variable,
     Device,
-    Period,
-    start_from_default,
-    validate_nonzero,
 )
 
 from time import time
-from datetime import datetime
+from datetime import datetime, timedelta
+from dateutil import relativedelta
+from monthdelta import monthdelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -49,15 +50,21 @@ def get_variable_value(variable_id, use_date_saved=False, query_type="value"):
         "use_date_saved": use_date_saved,
         "time_max_excluded": global_time_max_excluded,
     }
-    v = Variable.objects.get(id=variable_id)
-    if v.query_prev_value(**kwargs):
-        logger.debug(f"prev value {v.prev_value} {kwargs}")
-        if query_type == "timestamp":
-            return v.timestamp_old
-        elif query_type == "value":
-            return v.prev_value
-        else:
-            logger.warning(f"Operation query type unknown : {query_type}")
+    try:
+        v = Variable.objects.get(id=variable_id)
+    except Variable.DoesNotExist:
+        logger.warning(
+            f"Cannot evaluate operations device. Variable with id {variable_id} does not exist."
+        )
+    else:
+        if v.query_prev_value(**kwargs):
+            logger.debug(f"prev value {v.prev_value} {kwargs}")
+            if query_type == "timestamp":
+                return v.timestamp_old
+            elif query_type == "value":
+                return v.prev_value
+            else:
+                logger.warning(f"Operation query type unknown : {query_type}")
     return None
 
 
@@ -385,10 +392,114 @@ class OperationsVariable(models.Model):
             )
 
 
-################
-# TODO:
-# Variable calculé sur operations variable erreur : plus que la période est prise pour chaque calcul.
-################
+def validate_nonzero(value):
+    if value == 0:
+        raise ValidationError(
+            _("Quantity %(value)s is not allowed"),
+            params={"value": value},
+        )
+
+
+def start_from_default():
+    return make_aware(
+        datetime.datetime.combine(datetime.date.today(), datetime.datetime.min.time())
+    )
+
+
+class PeriodicField(models.Model):
+    """
+    Auto calculate and store value related to a Variable for a time range.
+    Example: - store the min of each month.
+    - store difference of each day between 9am an 8:59am
+    """
+
+    type_choices = (
+        (0, "min"),
+        (1, "max"),
+        (2, "total"),
+        (3, "difference"),
+        (4, "difference percent"),
+        (5, "delta"),
+        (6, "mean"),
+        (7, "first"),
+        (8, "last"),
+        (9, "count"),
+        (10, "count value"),
+        (11, "range"),
+        (12, "step"),
+        (13, "change count"),
+        (14, "distinct count"),
+    )
+    type = models.SmallIntegerField(
+        choices=type_choices,
+        help_text="Min: Minimum value of a field<br>"
+        "Max: Maximum value of a field<br>"
+        "Total: Sum of all values in a field<br>"
+        "Difference: Difference between first and last value of a field<br>"
+        "Difference percent: Percentage change between "
+        "first and last value of a field<br>"
+        "Delta: Cumulative change in value, only counts increments<br>"
+        "Mean: Mean value of all values in a field<br>"
+        "First: First value in a field<br>"
+        "Last: Last value in a field<br>"
+        "Count: Number of values in a field<br>"
+        "Count value: Number of a value in a field<br>"
+        "Range: Difference between maximum and minimum values of a field<br>"
+        "Step: Minimal interval between values of a field<br>"
+        "Change count: Number of times the field’s value changes<br>"
+        "Distinct count: Number of unique values in a field",
+    )
+    property = models.CharField(
+        default="",
+        blank=True,
+        null=True,
+        max_length=255,
+        help_text="Min: superior or equal this value, ex: 53.5 "
+        "(use >53.5 for strictly superior)<br>"
+        "Max: lower or equal this value, ex: 53.5 "
+        "(use <53.5 for strictly lower)<br>"
+        "Count value : enter the value to count",
+    )
+    start_from = models.DateTimeField(
+        default=start_from_default,
+        help_text="Calculate from this DateTime and then each period_factor*period",
+    )
+    period_choices = (
+        (0, "second"),
+        (1, "minute"),
+        (2, "hour"),
+        (3, "day"),
+        (4, "week"),
+        (5, "month"),
+        (6, "year"),
+    )
+    period = models.SmallIntegerField(choices=period_choices)
+    period_factor = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[validate_nonzero],
+        help_text="Example: set to 2 and choose minute to have a 2 minutes period",
+    )
+
+    def __str__(self):
+        s = self.type_choices[self.type][1] + "-"
+        if self.property != "" and self.property is not None:
+            s += str(self.property).replace("<", "lt").replace(">", "gt") + "-"
+        s += str(self.period_factor) + self.period_choices[self.period][1]
+        if self.period_factor > 1:
+            s += "s"
+        s += "-from:" + str(self.start_from.date()) + "T" + str(self.start_from.time())
+        return s
+
+    def validate_unique(self, exclude=None):
+        qs = PeriodicField.objects.filter(
+            type=self.type,
+            property=self.property,
+            start_from=self.start_from,
+            period=self.period,
+            period_factor=self.period_factor,
+        ).exclude(id=self.id)
+        if len(qs):
+            raise ValidationError("This periodic field already exist.")
 
 
 class OperationsDevice(models.Model):
@@ -482,3 +593,225 @@ class OperationsDevice(models.Model):
 
     def __str__(self):
         return self.operations_device.short_name
+
+
+class AggregatedVariable(models.Model):
+    aggregated_variable = models.OneToOneField(Variable, on_delete=models.CASCADE)
+    period = models.ForeignKey(PeriodicField, on_delete=models.CASCADE)
+    last_check = models.DateTimeField(blank=True, null=True)
+    state = models.CharField(blank=True, null=True, max_length=100)
+
+    class FormSet(BaseInlineFormSet):
+        def add_fields(self, form, index):
+            super().add_fields(form, index)
+            if not form.initial:
+                form.fields["last_check"].widget = forms.HiddenInput()
+                form.fields["state"].widget = forms.HiddenInput()
+            else:
+                form.fields["last_check"].widget = forms.TextInput()
+                form.fields["last_check"].disabled = True
+                form.fields["last_check"].widget.attrs["size"] = 70
+                form.fields["state"].widget = forms.TextInput()
+                form.fields["state"].widget.attrs["size"] = 70
+                form.fields["state"].disabled = True
+
+    def clean(self):
+        super().clean()
+        if self.period is None:
+            raise ValidationError("Select a period.")
+
+    def has_changed(self):
+        return True
+
+    @property
+    def main_variable(self):
+        try:
+            return self.aggregated_variable.device.aggregateddevice.variable
+        except Exception as e:
+            logger.warning(e)
+            return None
+
+    @property
+    def parent_variable(self):
+        try:
+            return self.aggregated_variable
+        except:
+            return None
+
+    def __str__(self):
+        if self.parent_variable is not None:
+            return self.parent_variable.name
+        return "EmptyAggregatedVariable"
+
+
+class AggregatedDevice(models.Model):
+    aggregated_device = models.OneToOneField(Device, on_delete=models.CASCADE)
+    variable = models.ForeignKey(
+        Variable, on_delete=models.CASCADE, blank=True, null=True
+    )
+
+    def clean(self):
+        super().clean()
+        if self.variable is None:
+            raise ValidationError("Select a variable to aggregate.")
+
+    def parent_device(self):
+        try:
+            return self.aggregated_device
+        except:
+            return None
+
+    def __str__(self):
+        if self.parent_device() is not None:
+            return self.parent_device().short_name
+        return "EmptyAggregatedDevice"
+
+
+class Period(object):
+    def __init__(self, start_from, period_factor, period_str):
+        self.start_from = start_from
+        self.period_factor = period_factor
+        self.period_str = period_str
+        # period_str = self.period.period_choices[self.period.period][1]
+
+    def __str__(self):
+        return f"{self.start_from} {self.period_factor} {self.period_str}"
+
+    def get_valid_range(self, d1, d2):
+        if is_naive(d1):
+            d1 = make_aware(d1)
+        if is_naive(d2):
+            d2 = make_aware(d2)
+        if d2 <= d1:
+            logger.warning("Use get_valid_range with d_start > d_end")
+            return None
+        if self.start_from == d1:
+            logger.info("strart from is d1")
+            d_start = 0
+        else:
+            logger.info(f"{self.start_from} {d1} {self.period_str}")
+            logger.info(d1 - self.start_from)
+            logger.info((d1 - self.start_from).total_seconds())
+            # (d2 - d1).total_seconds() / 60 / 60
+            d_start = self.period_diff_quantity(self.start_from, d1)
+            logger.info(f"strart from is not d1, it is {d_start}")
+            if d_start is not None:
+                if d_start != int(d_start):
+                    d_start = int(d_start) + 1
+                else:
+                    d_start = int(d_start)
+            else:
+                logger.debug("d_start - start_from < period_factor*period")
+                return None
+        d_end = self.period_diff_quantity(self.start_from, d2)
+        logger.info(d_end)
+        if d_end is not None:
+            d_end = int(d_end)
+        else:
+            logger.debug("d_end - start_from < period_factor*period")
+            return None
+        if d_end <= d_start:
+            logger.debug("d_end - d_start < period_factor*period")
+            return None
+
+        td = self.add_timedelta()
+
+        d_start = d_start / self.period_factor
+        if d_start != int(d_start):
+            d_start = int(d_start) + 1
+        else:
+            d_start = int(d_start)
+
+        d_end = d_end / self.period_factor
+        if d_end != int(d_end):
+            d_end = int(d_end) + 1
+        else:
+            d_end = int(d_end)
+
+        dd_start = d_start * td + self.start_from
+        dd_end = d_end * td + self.start_from
+
+        logger.info(f"{d_start} {d_end} {dd_start} {dd_end}")
+
+        if dd_end > d2:
+            logger.debug("%s > %s" % (dd_end, d2))
+            dd_end -= self.add_timedelta(self._period_diff_quantity(d2, dd_end))
+            logger.debug("dd_end : %s" % dd_end)
+
+        return [dd_start, dd_end]
+
+    def add_timedelta(self, delta=None):
+        if delta is None:
+            delta = self.period_factor
+        td = None
+        if self.period_str == "year":
+            td = monthdelta(12) * delta
+        elif self.period_str == "month":
+            td = monthdelta(delta)
+        elif self.period_str == "week":
+            td = timedelta(weeks=delta)
+        elif self.period_str == "day":
+            td = timedelta(days=delta)
+        elif self.period_str == "hour":
+            td = timedelta(hours=delta)
+        elif self.period_str == "minute":
+            td = timedelta(minutes=delta)
+        elif self.period_str == "second":
+            td = timedelta(seconds=delta)
+        return td
+
+    def _period_diff_quantity(self, d1, d2):
+        if self.period_str == "year":
+            res = self.years_diff_quantity(d1, d2)
+        elif self.period_str == "month":
+            res = self.months_diff_quantity(d1, d2)
+        elif self.period_str == "week":
+            res = self.weeks_diff_quantity(d1, d2)
+        elif self.period_str == "day":
+            res = self.days_diff_quantity(d1, d2)
+        elif self.period_str == "hour":
+            res = self.hours_diff_quantity(d1, d2)
+        elif self.period_str == "minute":
+            res = self.minutes_diff_quantity(d1, d2)
+        elif self.period_str == "second":
+            res = self.seconds_diff_quantity(d1, d2)
+        return res
+
+    def period_diff_quantity(self, d1, d2):
+        res = self._period_diff_quantity(d1, d2)
+        if res >= self.period_factor:
+            return res
+        else:
+            return None
+
+    def years_diff_quantity(self, d1, d2):
+        return relativedelta.relativedelta(d2, d1).years
+
+    def months_diff_quantity(self, d1, d2):
+        return (
+            relativedelta.relativedelta(d2, d1).months
+            + self.years_diff_quantity(d1, d2) * 12
+        )
+
+    def weeks_diff_quantity(self, d1, d2):
+        return self.days_diff_quantity(d1, d2) / 7
+
+    def days_diff_quantity(self, d1, d2):
+        diff = (d2 - d1).total_seconds() / 60 / 60 / 24
+        # logger.debug("Days: " + str(diff))
+        return diff
+
+    def hours_diff_quantity(self, d1, d2):
+        diff = (d2 - d1).total_seconds() / 60 / 60
+        # logger.debug("Hours: " + str(diff))
+        return diff
+
+    def minutes_diff_quantity(self, d1, d2):
+        diff = (d2 - d1).total_seconds() / 60
+        # logger.debug("Minutes: " + str(diff))
+        return diff
+
+    def seconds_diff_quantity(self, d1, d2):
+        diff = (d2 - d1).total_seconds()
+        # logger.debug("Seconds: " + str(diff))
+        return diff
