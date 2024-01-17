@@ -2,7 +2,7 @@
 from __future__ import unicode_literals
 
 from .. import PROTOCOL_ID
-from ....operations.models import Period
+from pyscada.operations.models import Period
 from pyscada.device import GenericHandlerDevice
 from pyscada.models import Variable
 
