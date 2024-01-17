@@ -38,7 +38,7 @@ class Device(GenericDevice):
         write value to the instrument/device
         """
         output = []
-        logger.warning(f"Aggregated device cannot write.")
+        logger.warning(f"Aggregation device cannot write.")
         return output
 
     def request_data(self):

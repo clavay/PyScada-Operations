@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from .. import PROTOCOL_ID_2 as PROTOCOL_ID
-from ..models import Period
+from .. import PROTOCOL_ID
+from ....operations.models import Period
 from pyscada.device import GenericHandlerDevice
 from pyscada.models import Variable
 
@@ -59,8 +59,8 @@ class GenericDevice(GenericHandlerDevice):
         add_partial_info=False,
         ignore_last_check=False,
     ):
-        last_check = variable_instance.aggregatedvariable.last_check
-        start_from = variable_instance.aggregatedvariable.period.start_from
+        last_check = variable_instance.aggregationvariable.last_check
+        start_from = variable_instance.aggregationvariable.period.start_from
         if last_check is not None and not ignore_last_check:
             return self.check_period(
                 variable_instance, last_check, now(), force_write, add_partial_info
@@ -74,7 +74,7 @@ class GenericDevice(GenericHandlerDevice):
         self, variable_instance, d1, d2, force_write=False, add_partial_info=False
     ):
         # erase cached values from other Calculated Variables with same store value
-        agg_var = variable_instance.aggregatedvariable
+        agg_var = variable_instance.aggregationvariable
         variable_instance.update_values([], [], erase_cache=True)
         logger.debug("Check period of %s [%s - %s]" % (variable_instance, d1, d2))
         agg_var.state = "Checking [%s to %s]" % (d1, d2)
@@ -151,7 +151,7 @@ class GenericDevice(GenericHandlerDevice):
                 v_stored = {}
             if not force_write and len(v_stored) and variable_instance.id in v_stored:
                 logger.debug(
-                    f"Value already exist for {self.aggregated_variable} in {d1} - {d1 + td}"
+                    f"Value already exist for {self.aggregation_variable} in {d1} - {d1 + td}"
                 )
                 pass
             else:
@@ -196,7 +196,7 @@ class GenericDevice(GenericHandlerDevice):
         return output
 
     def get_value(self, variable_instance, d1, d2):
-        agg_var = variable_instance.aggregatedvariable
+        agg_var = variable_instance.aggregationvariable
         main_variable = agg_var.main_variable
         logger.debug(
             f"getting value for {main_variable} in {d1} {d1.timestamp()} {d2} {d2.timestamp()}"

@@ -6,7 +6,7 @@ from django.apps import AppConfig
 from django.utils.translation import gettext_lazy as _
 from django.db.utils import ProgrammingError, OperationalError
 
-from . import __app_name__, aggretation_name
+from . import __app_name__
 
 
 class PyScadaOperationsConfig(AppConfig):
@@ -39,10 +39,3 @@ class PyScadaOperationsConfig(AppConfig):
             pass
         except OperationalError:
             pass
-
-
-class PyScadaAggregatedConfig(AppConfig):
-    name = "pyscada." + aggretation_name.lower()
-    verbose_name = _("PyScada " + aggretation_name)
-    path = os.path.dirname(os.path.realpath(__file__))
-    default_auto_field = "django.db.models.AutoField"

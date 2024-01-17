@@ -33,6 +33,7 @@ setup(
     install_requires=[
         "pyscada>=0.8.1",
         "numpy",
+        "simpleeval",
     ],
     packages=find_namespace_packages(exclude=["project", "project.*"]),
     include_package_data=True,
