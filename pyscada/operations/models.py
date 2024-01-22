@@ -135,10 +135,11 @@ class OperationsDataSource(models.Model):
             logger.debug(variable.device.operationsdevice.get_variable_ids())
             time_min = kwargs["time_min"] if "time_min" in kwargs else 0
             time_max = kwargs["time_max"] if "time_max" in kwargs else time()
-            result = self.read_multiple(
-                variable_ids=[variable.id], time_min=time_min, time_max=time_max
+            result = self.query_data(
+                variable_ids=[variable.id], time_min=time_min, time_max=time_max, time_in_ms=False, order="desc", quantity=1, **kwargs
             )
-            if variable.id in result:
+            if variable.id in result and len(result[variable.id]):
+                logger.info(result)
                 read_time = result[variable.id][-1][0]
                 read_value = result[variable.id][-1][1]
                 logger.debug(
@@ -184,7 +185,18 @@ class OperationsDataSource(models.Model):
         return result
 
     def read_multiple(self, **kwargs):
+        return self.query_data(**kwargs)
+
+    def query_data(self, quantity=None, order="asc", **kwargs):
+        t_start = time()
         logger.debug(kwargs)
+        output = {}
+        if order not in ["asc", "desc"]:
+            logger.warning(f"Wrong order to query data : {order}")
+            return output
+        if quantity is not None and type(quantity) != int:
+            logger.warning(f"Wrong quantity to query data : {quantity}")
+            return output
         variable_ids = kwargs.pop("variable_ids") if "variable_ids" in kwargs else []
         time_min = kwargs.pop("time_min") if "time_min" in kwargs else 0
         time_max = kwargs.pop("time_max") if "time_max" in kwargs else time()
@@ -198,7 +210,6 @@ class OperationsDataSource(models.Model):
         )
 
         # ouput = {"timestamp": time() * 1000, "date_saved_max": time() * 1000}
-        output = {}
         logger.debug(f"Operations read for {variable_ids} {time_in_ms}")
 
         # parse master and sub operation
@@ -256,15 +267,33 @@ class OperationsDataSource(models.Model):
                     )
                     continue
 
-                logger.debug("Valid range : %s - %s" % (d1, d2))
+                quantity = self.period_item.period_diff_quantity(d1, d2)
+                logger.debug(f"Valid range : {d1} - {d2} - {quantity}")
 
-                while d2 >= d1 + td and d1 + td <= now():
-                    logger.debug("add for %s - %s" % (d1, d1 + td))
-                    td1 = d1.timestamp()
-                    evaluated_device = self.eval_device(
-                        device, time_min=d1.timestamp(), time_max=(d1 + td).timestamp()
-                    )
-                    logger.debug([d1.timestamp(), evaluated_device])
+                i = j = 0
+                stop = False
+
+                while not stop:
+                    if order == "asc":
+                        dx = d1 + i*td
+                        logger.debug("asc add for %s - %s" % (dx, dx + td))
+                        evaluated_device = self.eval_device(
+                            device, time_min=(dx).timestamp(), time_max=(dx + td).timestamp()
+                        )
+                        if dx + td >= min(d2, now()):
+                            logger.debug(f"will stop iterating {d1} {td} {i} {d2} {now()} {d1 + (i+1)*td} {min(d2, now())}")
+                            stop = True
+                    elif order == "desc":
+                        dx = d2 - i * td
+                        logger.debug("desc add for %s - %s" % (dx, dx + td))
+                        evaluated_device = self.eval_device(
+                            device, time_min=(dx).timestamp(), time_max=(dx + td).timestamp()
+                        )
+                        if dx <= min(d1, now()):
+                            logger.debug(f"will stop iterating {d1} {td} {i} {d2} {now()} {d1 + (i+1)*td} {min(d2, now())}")
+                            stop = True
+#                            device, time_min=(d1 + (q)).timestamp(), time_max=(d1 + td).timestamp()
+                    logger.debug([dx.timestamp(), evaluated_device])
 
                     # eval
                     for v_id in variable_ids:
@@ -273,13 +302,21 @@ class OperationsDataSource(models.Model):
                                 output[v_id] = []
                             if evaluated_device is not None:
                                 timestamp = (
-                                    d1.timestamp() * 1000
+                                    dx.timestamp() * 1000
                                     if time_in_ms
-                                    else d1.timestamp()
+                                    else dx.timestamp()
                                 )
                                 logger.debug(f"append {timestamp} {evaluated_device}")
                                 output[v_id].append([timestamp, evaluated_device])
-                    d1 = d1 + td
+                    #d1 = d1 + td
+                    if evaluated_device is not None:
+                        j += 1
+                    if quantity is not None and quantity <= j:
+                        break
+                    i += 1
+                    if "timeout" in kwargs and kwargs["timeout"] < time() - t_start:
+                        stop = True
+                        logger.info(f"Timeout of {kwargs['timeout']} seconds reached in query data for OperationsDataSource.")
             if device.operationsdevice.synchronisation == 1:
                 # variable trigger
                 logger.debug("trigger")
@@ -305,12 +342,21 @@ class OperationsDataSource(models.Model):
                 if trigger_variable.id in trigger_data:
                     logger.debug(len(trigger_data[trigger_variable.id]))
                     logger.debug(trigger_data[trigger_variable.id])
-                    for i in range(len(trigger_data[trigger_variable.id])):
-                        t_from = trigger_data[trigger_variable.id][i][0]
-                        if i + 1 < len(trigger_data[trigger_variable.id]):
-                            t_to = trigger_data[trigger_variable.id][i + 1][0]
-                        else:
-                            t_to = time_max
+                    data_length = len(trigger_data[trigger_variable.id])
+                    j = 0
+                    for i in range(data_length):
+                        if order == 'asc':
+                            t_from = trigger_data[trigger_variable.id][i][0]
+                            if i + 1 < data_length:
+                                t_to = trigger_data[trigger_variable.id][i + 1][0]
+                            else:
+                                t_to = time_max
+                        elif order == "desc":
+                            t_from = trigger_data[trigger_variable.id][data_length - i - 1][0]
+                            if i > 0:
+                                t_to = trigger_data[trigger_variable.id][data_length - i][0]
+                            else:
+                                t_to = time_max
                         logger.debug(f"{i} {t_from} {t_to}")
                         if t_from == t_to:
                             # Do not exclude time_max
@@ -336,6 +382,13 @@ class OperationsDataSource(models.Model):
                                         f"append {timestamp} {evaluated_device} {time_in_ms}"
                                     )
                                     output[v_id].append([timestamp, evaluated_device])
+                        if evaluated_device is not None:
+                            j += 1
+                        if quantity is not None and quantity <= j:
+                            break
+                        if "timeout" in kwargs and kwargs["timeout"] < time() - t_start:
+                            logger.info(f"Timeout of {kwargs['timeout']} seconds reached in query data for OperationsDataSource.")
+                            break
                 else:
                     logger.debug(
                         f"Trigger variable {trigger_variable} has no data in {time_min} - {time_max} range"

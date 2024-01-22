@@ -151,7 +151,7 @@ class GenericDevice(GenericHandlerDevice):
                 v_stored = {}
             if not force_write and len(v_stored) and variable_instance.id in v_stored:
                 logger.debug(
-                    f"Value already exist for {self.aggregation_variable} in {d1} - {d1 + td}"
+                    f"Value already exist for {agg_var} in {d1} - {d1 + td}"
                 )
                 pass
             else:
@@ -209,7 +209,8 @@ class GenericDevice(GenericHandlerDevice):
                 time_in_ms=True,
                 time_max_excluded=True,
             )
-            logger.debug(f"get values : {tmp}")
+            tmpCount = len(tmp[main_variable.id]) if main_variable.id in tmp else 0
+            logger.debug(f"get values for {main_variable.id} : {tmpCount}")
         except AttributeError:
             tmp = {}
         values = []
