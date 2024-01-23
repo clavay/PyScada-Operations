@@ -150,9 +150,7 @@ class GenericDevice(GenericHandlerDevice):
             except AttributeError:
                 v_stored = {}
             if not force_write and len(v_stored) and variable_instance.id in v_stored:
-                logger.debug(
-                    f"Value already exist for {agg_var} in {d1} - {d1 + td}"
-                )
+                logger.debug(f"Value already exist for {agg_var} in {d1} - {d1 + td}")
                 pass
             else:
                 calc_value = self.get_value(variable_instance, d1, d1 + td)

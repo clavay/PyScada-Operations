@@ -21,6 +21,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def validate_nonzero(value):
     if value == 0:
         raise ValidationError(
@@ -30,9 +31,7 @@ def validate_nonzero(value):
 
 
 def start_from_default():
-    return make_aware(
-        datetime.combine(date.today(), datetime.min.time())
-    )
+    return make_aware(datetime.combine(date.today(), datetime.min.time()))
 
 
 class PeriodicField(models.Model):

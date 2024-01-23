@@ -64,9 +64,7 @@ def validate_nonzero(value):
 
 
 def start_from_default():
-    return make_aware(
-        datetime.combine(date.today(), datetime.min.time())
-    )
+    return make_aware(datetime.combine(date.today(), datetime.min.time()))
 
 
 class OperationsDataSource(models.Model):
@@ -136,7 +134,13 @@ class OperationsDataSource(models.Model):
             time_min = kwargs["time_min"] if "time_min" in kwargs else 0
             time_max = kwargs["time_max"] if "time_max" in kwargs else time()
             result = self.query_data(
-                variable_ids=[variable.id], time_min=time_min, time_max=time_max, time_in_ms=False, order="desc", quantity=1, **kwargs
+                variable_ids=[variable.id],
+                time_min=time_min,
+                time_max=time_max,
+                time_in_ms=False,
+                order="desc",
+                quantity=1,
+                **kwargs,
             )
             if variable.id in result and len(result[variable.id]):
                 logger.info(result)
@@ -275,24 +279,32 @@ class OperationsDataSource(models.Model):
 
                 while not stop:
                     if order == "asc":
-                        dx = d1 + i*td
+                        dx = d1 + i * td
                         logger.debug("asc add for %s - %s" % (dx, dx + td))
                         evaluated_device = self.eval_device(
-                            device, time_min=(dx).timestamp(), time_max=(dx + td).timestamp()
+                            device,
+                            time_min=(dx).timestamp(),
+                            time_max=(dx + td).timestamp(),
                         )
                         if dx + td >= min(d2, now()):
-                            logger.debug(f"will stop iterating {d1} {td} {i} {d2} {now()} {d1 + (i+1)*td} {min(d2, now())}")
+                            logger.debug(
+                                f"will stop iterating {d1} {td} {i} {d2} {now()} {d1 + (i+1)*td} {min(d2, now())}"
+                            )
                             stop = True
                     elif order == "desc":
                         dx = d2 - i * td
                         logger.debug("desc add for %s - %s" % (dx, dx + td))
                         evaluated_device = self.eval_device(
-                            device, time_min=(dx).timestamp(), time_max=(dx + td).timestamp()
+                            device,
+                            time_min=(dx).timestamp(),
+                            time_max=(dx + td).timestamp(),
                         )
                         if dx <= min(d1, now()):
-                            logger.debug(f"will stop iterating {d1} {td} {i} {d2} {now()} {d1 + (i+1)*td} {min(d2, now())}")
+                            logger.debug(
+                                f"will stop iterating {d1} {td} {i} {d2} {now()} {d1 + (i+1)*td} {min(d2, now())}"
+                            )
                             stop = True
-#                            device, time_min=(d1 + (q)).timestamp(), time_max=(d1 + td).timestamp()
+                    #                            device, time_min=(d1 + (q)).timestamp(), time_max=(d1 + td).timestamp()
                     logger.debug([dx.timestamp(), evaluated_device])
 
                     # eval
@@ -308,7 +320,7 @@ class OperationsDataSource(models.Model):
                                 )
                                 logger.debug(f"append {timestamp} {evaluated_device}")
                                 output[v_id].append([timestamp, evaluated_device])
-                    #d1 = d1 + td
+                    # d1 = d1 + td
                     if evaluated_device is not None:
                         j += 1
                     if quantity is not None and quantity <= j:
@@ -316,7 +328,9 @@ class OperationsDataSource(models.Model):
                     i += 1
                     if "timeout" in kwargs and kwargs["timeout"] < time() - t_start:
                         stop = True
-                        logger.info(f"Timeout of {kwargs['timeout']} seconds reached in query data for OperationsDataSource.")
+                        logger.info(
+                            f"Timeout of {kwargs['timeout']} seconds reached in query data for OperationsDataSource."
+                        )
             if device.operationsdevice.synchronisation == 1:
                 # variable trigger
                 logger.debug("trigger")
@@ -345,16 +359,20 @@ class OperationsDataSource(models.Model):
                     data_length = len(trigger_data[trigger_variable.id])
                     j = 0
                     for i in range(data_length):
-                        if order == 'asc':
+                        if order == "asc":
                             t_from = trigger_data[trigger_variable.id][i][0]
                             if i + 1 < data_length:
                                 t_to = trigger_data[trigger_variable.id][i + 1][0]
                             else:
                                 t_to = time_max
                         elif order == "desc":
-                            t_from = trigger_data[trigger_variable.id][data_length - i - 1][0]
+                            t_from = trigger_data[trigger_variable.id][
+                                data_length - i - 1
+                            ][0]
                             if i > 0:
-                                t_to = trigger_data[trigger_variable.id][data_length - i][0]
+                                t_to = trigger_data[trigger_variable.id][
+                                    data_length - i
+                                ][0]
                             else:
                                 t_to = time_max
                         logger.debug(f"{i} {t_from} {t_to}")
@@ -387,7 +405,9 @@ class OperationsDataSource(models.Model):
                         if quantity is not None and quantity <= j:
                             break
                         if "timeout" in kwargs and kwargs["timeout"] < time() - t_start:
-                            logger.info(f"Timeout of {kwargs['timeout']} seconds reached in query data for OperationsDataSource.")
+                            logger.info(
+                                f"Timeout of {kwargs['timeout']} seconds reached in query data for OperationsDataSource."
+                            )
                             break
                 else:
                     logger.debug(
