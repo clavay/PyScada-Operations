@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("pyscada", "0105_edit_generic_device_protocol"),
+        ("pyscada", "0106_datasource_datasourcemodel_djangodatabase_and_more"),
         ("operations", "0001_add_device_protocol"),
     ]
 
