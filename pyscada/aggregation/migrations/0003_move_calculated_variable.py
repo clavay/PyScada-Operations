@@ -22,7 +22,9 @@ def forwards_func(apps, schema_editor):
         DeviceProtocol = apps.get_model("pyscada", "DeviceProtocol")
         Variable = apps.get_model("pyscada", "Variable")
         AggregationVariable = apps.get_model("aggregation", "AggregationVariable")
-        CalculatedVariableSelector = apps.get_model("pyscada", "CalculatedVariableSelector")
+        CalculatedVariableSelector = apps.get_model(
+            "pyscada", "CalculatedVariableSelector"
+        )
         CalculatedVariable = apps.get_model("pyscada", "CalculatedVariable")
         PeriodFieldOld = apps.get_model("pyscada", "PeriodicField")
         PeriodFieldNew = apps.get_model("aggregation", "PeriodicField")
@@ -81,6 +83,7 @@ def forwards_func(apps, schema_editor):
     except (ProgrammingError, LookupError):
         pass
 
+
 def reverse_func(apps, schema_editor):
     # forwards_func() creates two Country instances,
     # so reverse_func() should delete them.
@@ -102,7 +105,9 @@ def reverse_func(apps, schema_editor):
                 main_variable=ad.variable
             )
             if not f_cvs.count():
-                cvs, _ = CalculatedVariableSelector.objects.using(db_alias).get_or_create(
+                cvs, _ = CalculatedVariableSelector.objects.using(
+                    db_alias
+                ).get_or_create(
                     main_variable=ad.variable,
                 )
             else:
@@ -124,14 +129,20 @@ def reverse_func(apps, schema_editor):
     except ProgrammingError:
         pass
 
+
 class Migration(migrations.Migration):
     dependencies = [
         ("aggregation", "0002_initial"),
     ]
-    run_before = [
-    ]
+    run_before = []
 
-    if global_apps.is_installed("pyscada") and not MigrationRecorder.Migration.objects.filter(app="pyscada", name__contains="0108_remove_calculatedvariable_period_and_more").count():
+    if (
+        global_apps.is_installed("pyscada")
+        and not MigrationRecorder.Migration.objects.filter(
+            app="pyscada",
+            name__contains="0108_remove_calculatedvariable_period_and_more",
+        ).count()
+    ):
         print("add run_before")
         run_before.append(("pyscada", "0108_remove_calculatedvariable_period_and_more"))
 
