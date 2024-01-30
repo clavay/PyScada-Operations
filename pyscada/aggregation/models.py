@@ -130,6 +130,10 @@ class PeriodicField(models.Model):
             raise ValidationError("This periodic field already exist.")
 
 
+def decompress(value):
+    return None
+
+
 class AggregationVariable(models.Model):
     aggregation_variable = models.OneToOneField(Variable, on_delete=models.CASCADE)
     period = models.ForeignKey(PeriodicField, on_delete=models.CASCADE)
@@ -143,12 +147,12 @@ class AggregationVariable(models.Model):
                 form.fields["last_check"].widget = forms.HiddenInput()
                 form.fields["state"].widget = forms.HiddenInput()
             else:
-                form.fields["last_check"].widget = forms.TextInput()
+                form.fields["last_check"].widget = forms.Textarea()
                 form.fields["last_check"].disabled = True
-                form.fields["last_check"].widget.attrs["size"] = 70
-                form.fields["state"].widget = forms.TextInput()
-                form.fields["state"].widget.attrs["size"] = 70
+                form.fields["last_check"].widget.decompress = decompress
+                form.fields["state"].widget = forms.Textarea()
                 form.fields["state"].disabled = True
+                form.fields["state"].widget.decompress = decompress
 
     def clean(self):
         super().clean()
