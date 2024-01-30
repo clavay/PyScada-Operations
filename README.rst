@@ -30,6 +30,7 @@ Installation
 ------------
 
  - pip install https://github.com/clavay/PyScada-Operations/tarball/main
+ - in order to move you CalculatedVariables to AggregationVariables you need to install this plugin before running the pyscada migration 0108.
 
 Contribute
 ----------
