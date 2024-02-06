@@ -31,7 +31,7 @@ setup(
     platforms=["OS Independent"],
     classifiers=CLASSIFIERS,
     install_requires=[
-        "pyscada>=0.8.1",
+        "pyscada>=0.8.2",
         "numpy",
         "simpleeval",
     ],
