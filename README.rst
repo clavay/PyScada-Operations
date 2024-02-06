@@ -31,6 +31,7 @@ Installation
 
  - pip install https://github.com/clavay/PyScada-Operations/tarball/main
  - in order to move you CalculatedVariables to AggregationVariables you need to install this plugin before running the pyscada migration 0108.
+ - in order to see the aggregation protocol, you need to have the last `settings.py` version which add the aggregation app to `INSTALLED_APPS`. Add [this lines](https://github.com/pyscada/PyScada/blob/main/tests/project_template/project_name/settings.py-tpl#L60-L65) if missing.
 
 Contribute
 ----------
