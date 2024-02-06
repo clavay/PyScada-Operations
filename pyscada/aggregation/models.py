@@ -166,7 +166,11 @@ def decompress(value):
 class AggregationVariable(models.Model):
     aggregation_variable = models.OneToOneField(Variable, on_delete=models.CASCADE)
     variable = models.ForeignKey(
-        Variable, on_delete=models.CASCADE, blank=True, null=True, related_name="variable_to_aggregate",
+        Variable,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name="variable_to_aggregate",
     )
     last_check = models.DateTimeField(blank=True, null=True)
     state = models.CharField(blank=True, null=True, max_length=100)
@@ -206,4 +210,3 @@ class AggregationVariable(models.Model):
         if self.parent_variable is not None:
             return self.parent_variable.name
         return "EmptyAggregationVariable"
-

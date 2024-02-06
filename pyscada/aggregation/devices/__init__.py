@@ -85,7 +85,9 @@ class GenericDevice(GenericHandlerDevice):
         self.period_item = Period(
             variable_instance.device.aggregationdevice.start_from,
             variable_instance.device.aggregationdevice.period_factor,
-            variable_instance.device.aggregationdevice.period_choices[variable_instance.device.aggregationdevice.period][1],
+            variable_instance.device.aggregationdevice.period_choices[
+                variable_instance.device.aggregationdevice.period
+            ][1],
         )
 
         if is_naive(d1):
@@ -124,7 +126,12 @@ class GenericDevice(GenericHandlerDevice):
 
         logger.debug(f"Valid range : [{d1} to {d2}] for {variable_instance}")
         to_store = False
-        while d2.timestamp() - variable_instance.device.aggregationdevice.calculation_wait_offset >= (d1 + td).timestamp() and d1 + td <= now():
+        while (
+            d2.timestamp()
+            - variable_instance.device.aggregationdevice.calculation_wait_offset
+            >= (d1 + td).timestamp()
+            and d1 + td <= now()
+        ):
             logger.debug(f"add [{d1} to {d1 + td}] for {variable_instance}")
             td1 = d1.timestamp()
             try:
@@ -141,7 +148,9 @@ class GenericDevice(GenericHandlerDevice):
             else:
                 calc_value = self.get_value(variable_instance, d1, d1 + td)
                 if calc_value is not None and variable_instance.update_values(
-                    [calc_value], [td1 + variable_instance.device.aggregationdevice.timestamp_offset], erase_cache=False
+                    [calc_value],
+                    [td1 + variable_instance.device.aggregationdevice.timestamp_offset],
+                    erase_cache=False,
                 ):
                     to_store = True
             d1 = d1 + td
@@ -161,8 +170,14 @@ class GenericDevice(GenericHandlerDevice):
             calc_value = self.get_value(variable_instance, d2 - td, d2)
             td2 = (d2 - td).timestamp()
             if calc_value is not None:
-                logger.debug(f"adding partial last value in [{d2 - td} to {d2}] for {variable_instance}")
-                variable_instance.update_values([calc_value], [td2 + variable_instance.device.aggregationdevice.timestamp_offset], erase_cache=False)
+                logger.debug(
+                    f"adding partial last value in [{d2 - td} to {d2}] for {variable_instance}"
+                )
+                variable_instance.update_values(
+                    [calc_value],
+                    [td2 + variable_instance.device.aggregationdevice.timestamp_offset],
+                    erase_cache=False,
+                )
 
         # Save recorded data elements to DB
         if len(output):
@@ -188,12 +203,16 @@ class GenericDevice(GenericHandlerDevice):
         try:
             tmp = Variable.objects.read_multiple(
                 variable_ids=[agg_var.variable.id],
-                time_min=d1.timestamp() + variable_instance.device.aggregationdevice.calculation_start_offset,
-                time_max=d2.timestamp() + variable_instance.device.aggregationdevice.calculation_end_offset,
+                time_min=d1.timestamp()
+                + variable_instance.device.aggregationdevice.calculation_start_offset,
+                time_max=d2.timestamp()
+                + variable_instance.device.aggregationdevice.calculation_end_offset,
                 time_in_ms=True,
                 time_max_excluded=True,
             )
-            tmpCount = len(tmp[agg_var.variable.id]) if agg_var.variable.id in tmp else 0
+            tmpCount = (
+                len(tmp[agg_var.variable.id]) if agg_var.variable.id in tmp else 0
+            )
             logger.debug(f"get values for {variable_instance} : {tmpCount}")
         except AttributeError:
             tmp = {}
@@ -201,7 +220,9 @@ class GenericDevice(GenericHandlerDevice):
         if agg_var.variable.id in tmp:
             for v in tmp[agg_var.variable.id]:
                 values.append(v[1])
-            type_str = variable_instance.device.aggregationdevice.type_choices[variable_instance.device.aggregationdevice.type][1]
+            type_str = variable_instance.device.aggregationdevice.type_choices[
+                variable_instance.device.aggregationdevice.type
+            ][1]
             if type_str == "min":
                 p = str(variable_instance.device.aggregationdevice.property)
                 if p == "" or p is None or p == "None":

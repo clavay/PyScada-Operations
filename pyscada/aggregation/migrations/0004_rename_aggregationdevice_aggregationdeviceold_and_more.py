@@ -6,7 +6,8 @@ from .. import PROTOCOL_ID, __app_name__
 
 from django.db import migrations
 from django.db.utils import ProgrammingError
-#from django.apps import apps as global_apps
+
+# from django.apps import apps as global_apps
 from django.db.migrations.recorder import MigrationRecorder
 
 import logging
@@ -69,9 +70,11 @@ def reverse_func(apps, schema_editor):
     except (ProgrammingError, LookupError) as e:
         logger.info(e)
 
+
 """
 
 """
+
 
 class Migration(migrations.Migration):
     dependencies = [

@@ -29,9 +29,7 @@ def forwards_func(apps, schema_editor):
 
         # create devices
         for period in PeriodField.objects.using(db_alias).all():
-            avos = AggregationVariableOld.objects.using(db_alias).filter(
-                period=period
-            )
+            avos = AggregationVariableOld.objects.using(db_alias).filter(period=period)
             if avos.count():
                 # create device
                 d, _ = Device.objects.using(db_alias).get_or_create(
@@ -41,14 +39,20 @@ def forwards_func(apps, schema_editor):
                     polling_interval=60,  # 1 minute, TODO add synchronisation for device polling interval
                 )
                 ad, _ = AggregationDevice.objects.using(db_alias).get_or_create(
-                    aggregation_device=d, type=period.type, property=period.property,
-                    start_from=period.start_from, period=period.period, period_factor=period.period_factor
+                    aggregation_device=d,
+                    type=period.type,
+                    property=period.property,
+                    start_from=period.start_from,
+                    period=period.period,
+                    period_factor=period.period_factor,
                 )
 
                 # create variables
                 for avo in avos:
                     try:
-                        v2=avo.aggregation_variable.device.aggregationdeviceold.variable
+                        v2 = (
+                            avo.aggregation_variable.device.aggregationdeviceold.variable
+                        )
                     except:
                         continue
                     v = avo.aggregation_variable
