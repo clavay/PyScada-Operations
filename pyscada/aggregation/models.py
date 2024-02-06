@@ -34,7 +34,8 @@ def start_from_default():
     return make_aware(datetime.combine(date.today(), datetime.min.time()))
 
 
-class PeriodicField(models.Model):
+class AggregationDevice(models.Model):
+    aggregation_device = models.OneToOneField(Device, on_delete=models.CASCADE)
     """
     Auto calculate and store value related to a Variable for a time range.
     Example: - store the min of each month.
@@ -59,6 +60,8 @@ class PeriodicField(models.Model):
         (14, "distinct count"),
     )
     type = models.SmallIntegerField(
+        blank=True,
+        null=True,
         choices=type_choices,
         help_text="Min: Minimum value of a field<br>"
         "Max: Maximum value of a field<br>"
@@ -107,27 +110,53 @@ class PeriodicField(models.Model):
         validators=[validate_nonzero],
         help_text="Example: set to 2 and choose minute to have a 2 minutes period",
     )
+    calculation_start_offset = models.FloatField(
+        default=0,
+        help_text="Offset in seconds used for the calculation start date. If negative, the calculation will start in the past; if positive, it will start in the future.",
+    )
+    calculation_end_offset = models.FloatField(
+        default=0,
+        help_text="Offset in seconds used for the calculation end date. If negative, the calculation will start in the past; if positive, it will start in the future.",
+    )
+    calculation_wait_offset = models.FloatField(
+        default=0,
+        help_text="Offset in seconds used to wait a certain amount of time before performing aggregation. Example: a value of 3600 will result in waiting before aggregating the last hour's data.",
+    )
+    timestamp_offset = models.FloatField(
+        default=0,
+        help_text="Offset in seconds used to save the aggregated value from the period start. If negative, the saved data will be in the past; if positive, it will be in the future.",
+    )
 
-    def __str__(self):
-        s = self.type_choices[self.type][1] + "-"
-        if self.property != "" and self.property is not None:
-            s += str(self.property).replace("<", "lt").replace(">", "gt") + "-"
-        s += str(self.period_factor) + self.period_choices[self.period][1]
-        if self.period_factor > 1:
-            s += "s"
-        s += "-from:" + str(self.start_from.date()) + "T" + str(self.start_from.time())
-        return s
-
-    def validate_unique(self, exclude=None):
-        qs = PeriodicField.objects.filter(
+    def clean(self):
+        super().clean()
+        if self.type == None:
+            raise ValidationError("Select an aggregation type.")
+        qs = AggregationDevice.objects.filter(
             type=self.type,
             property=self.property,
             start_from=self.start_from,
             period=self.period,
             period_factor=self.period_factor,
+            calculation_start_offset=self.calculation_start_offset,
+            calculation_end_offset=self.calculation_end_offset,
+            calculation_wait_offset=self.calculation_wait_offset,
+            timestamp_offset=self.timestamp_offset,
         ).exclude(id=self.id)
         if len(qs):
             raise ValidationError("This periodic field already exist.")
+        if self.calculation_wait_offset < 0:
+            raise ValidationError("Calculation wait offset should be positive.")
+
+    def parent_device(self):
+        try:
+            return self.aggregation_device
+        except:
+            return None
+
+    def __str__(self):
+        if self.parent_device() is not None:
+            return self.parent_device().short_name
+        return "EmptyAggregationDevice"
 
 
 def decompress(value):
@@ -136,9 +165,13 @@ def decompress(value):
 
 class AggregationVariable(models.Model):
     aggregation_variable = models.OneToOneField(Variable, on_delete=models.CASCADE)
-    period = models.ForeignKey(PeriodicField, on_delete=models.CASCADE)
+    variable = models.ForeignKey(
+        Variable, on_delete=models.CASCADE, blank=True, null=True, related_name="variable_to_aggregate",
+    )
     last_check = models.DateTimeField(blank=True, null=True)
     state = models.CharField(blank=True, null=True, max_length=100)
+
+    fk_name = "aggregation_variable"
 
     class FormSet(BaseInlineFormSet):
         def add_fields(self, form, index):
@@ -156,19 +189,11 @@ class AggregationVariable(models.Model):
 
     def clean(self):
         super().clean()
-        if self.period is None:
-            raise ValidationError("Select a period.")
+        if self.variable is None:
+            raise ValidationError("Select a variable.")
 
     def has_changed(self):
         return True
-
-    @property
-    def main_variable(self):
-        try:
-            return self.aggregation_variable.device.aggregationdevice.variable
-        except Exception as e:
-            logger.warning(e)
-            return None
 
     @property
     def parent_variable(self):
@@ -182,25 +207,3 @@ class AggregationVariable(models.Model):
             return self.parent_variable.name
         return "EmptyAggregationVariable"
 
-
-class AggregationDevice(models.Model):
-    aggregation_device = models.OneToOneField(Device, on_delete=models.CASCADE)
-    variable = models.ForeignKey(
-        Variable, on_delete=models.CASCADE, blank=True, null=True
-    )
-
-    def clean(self):
-        super().clean()
-        if self.variable is None:
-            raise ValidationError("Select a variable to aggregate.")
-
-    def parent_device(self):
-        try:
-            return self.aggregation_device
-        except:
-            return None
-
-    def __str__(self):
-        if self.parent_device() is not None:
-            return self.parent_device().short_name
-        return "EmptyAggregationDevice"

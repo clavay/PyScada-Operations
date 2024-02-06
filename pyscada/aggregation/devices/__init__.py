@@ -60,7 +60,7 @@ class GenericDevice(GenericHandlerDevice):
         ignore_last_check=False,
     ):
         last_check = variable_instance.aggregationvariable.last_check
-        start_from = variable_instance.aggregationvariable.period.start_from
+        start_from = variable_instance.device.aggregationdevice.start_from
         if last_check is not None and not ignore_last_check:
             return self.check_period(
                 variable_instance, last_check, now(), force_write, add_partial_info
@@ -76,16 +76,16 @@ class GenericDevice(GenericHandlerDevice):
         # erase cached values from other Calculated Variables with same store value
         agg_var = variable_instance.aggregationvariable
         variable_instance.update_values([], [], erase_cache=True)
-        logger.debug("Check period of %s [%s - %s]" % (variable_instance, d1, d2))
-        agg_var.state = "Checking [%s to %s]" % (d1, d2)
+        logger.debug(f"Check period of {variable_instance} [{d1} to {d2}]")
+        agg_var.state = f"Checking [{d1} to {d2}]"
         agg_var.state = agg_var.state[0:100]
         agg_var.save(update_fields=["state"])
 
         # create period object
         self.period_item = Period(
-            agg_var.period.start_from,
-            agg_var.period.period_factor,
-            agg_var.period.period_choices[agg_var.period.period][1],
+            variable_instance.device.aggregationdevice.start_from,
+            variable_instance.device.aggregationdevice.period_factor,
+            variable_instance.device.aggregationdevice.period_choices[variable_instance.device.aggregationdevice.period][1],
         )
 
         if is_naive(d1):
@@ -96,14 +96,9 @@ class GenericDevice(GenericHandlerDevice):
 
         if self.period_item.period_diff_quantity(d1, d2) is None:
             logger.debug(
-                "No period in date interval : %s (%s %s)" % (agg_var.period, d1, d2)
+                f"No period in date interval : {variable_instance} [{d1} to {d2}]"
             )
-            agg_var.state = "[%s to %s] < %s" % (
-                d1,
-                d2,
-                str(agg_var.period.period_factor)
-                + agg_var.period.period_choices[agg_var.period.period][1],
-            )
+            agg_var.state = f"[{d1} to {d2}] < {variable_instance.device.aggregationdevice.period_factor} {variable_instance.device.aggregationdevice.period_choices[variable_instance.device.aggregationdevice.period][1]}"
             agg_var.state = agg_var.state[0:100]
             agg_var.save(update_fields=["state"])
             return output
@@ -112,11 +107,7 @@ class GenericDevice(GenericHandlerDevice):
 
         d = self.period_item.get_valid_range(d1, d2)
         if d is None:
-            agg_var.state = "No time range found [%s to %s] %s" % (
-                d1,
-                d2,
-                agg_var.period,
-            )
+            agg_var.state = f"No time range found [{d1} to {d2}] {variable_instance}"
             agg_var.state = agg_var.state[0:100]
             agg_var.save(update_fields=["state"])
             return output
@@ -124,22 +115,17 @@ class GenericDevice(GenericHandlerDevice):
 
         if self.period_item.period_diff_quantity(d1, d2) is None:
             logger.debug(
-                "No period in new date interval : %s (%s %s)" % (agg_var.period, d1, d2)
+                f"No period in new date interval : {variable_instance} [{d1} to {d2}]"
             )
-            agg_var.state = "[%s to %s] < %s" % (
-                d1,
-                d2,
-                str(agg_var.period.period_factor)
-                + agg_var.period.period_choices[agg_var.period.period][1],
-            )
+            agg_var.state = f"[{d1} to {d2}] < {variable_instance.device.aggregationdevice.period_factor} {variable_instance.device.aggregationdevice.period_choices[variable_instance.device.aggregationdevice.period][1]}"
             agg_var.state = agg_var.state[0:100]
             agg_var.save(update_fields=["state"])
             return output
 
-        logger.debug("Valid range : %s - %s" % (d1, d2))
+        logger.debug(f"Valid range : [{d1} to {d2}] for {variable_instance}")
         to_store = False
-        while d2 >= d1 + td and d1 + td <= now():
-            logger.debug("add for %s - %s" % (d1, d1 + td))
+        while d2.timestamp() - variable_instance.device.aggregationdevice.calculation_wait_offset >= (d1 + td).timestamp() and d1 + td <= now():
+            logger.debug(f"add [{d1} to {d1 + td}] for {variable_instance}")
             td1 = d1.timestamp()
             try:
                 v_stored = Variable.objects.read_multiple(
@@ -155,7 +141,7 @@ class GenericDevice(GenericHandlerDevice):
             else:
                 calc_value = self.get_value(variable_instance, d1, d1 + td)
                 if calc_value is not None and variable_instance.update_values(
-                    [calc_value], [td1], erase_cache=False
+                    [calc_value], [td1 + variable_instance.device.aggregationdevice.timestamp_offset], erase_cache=False
                 ):
                     to_store = True
             d1 = d1 + td
@@ -169,13 +155,14 @@ class GenericDevice(GenericHandlerDevice):
             logger.debug("Nothing to add")
             agg_var.last_check = min(d1, d2, now())
 
-        # Add partial last value when then is data but the period is not elapsed
+        # Add partial last value when there is data but the period is not elapsed
         # do not use this data in last check to recalculate it again till the period is elapsed
-        calc_value = self.get_value(variable_instance, d2 - td, d2)
-        td2 = (d2 - td).timestamp()
-        if add_partial_info and calc_value is not None:
-            logger.debug(f"adding partial last value for {d2 - td} {d2}")
-            variable_instance.update_values([calc_value], [td2], erase_cache=False)
+        if add_partial_info:
+            calc_value = self.get_value(variable_instance, d2 - td, d2)
+            td2 = (d2 - td).timestamp()
+            if calc_value is not None:
+                logger.debug(f"adding partial last value in [{d2 - td} to {d2}] for {variable_instance}")
+                variable_instance.update_values([calc_value], [td2 + variable_instance.device.aggregationdevice.timestamp_offset], erase_cache=False)
 
         # Save recorded data elements to DB
         if len(output):
@@ -187,7 +174,7 @@ class GenericDevice(GenericHandlerDevice):
                 items=output, batch_size=100, ignore_conflicts=True
             )
 
-        agg_var.state = "Checked [%s to %s]" % (d1, d2)
+        agg_var.state = f"Checked [{d1} to {d2}]"
         agg_var.state = agg_var.state[0:100]
         agg_var.save(update_fields=["last_check", "state"])
 
@@ -195,29 +182,28 @@ class GenericDevice(GenericHandlerDevice):
 
     def get_value(self, variable_instance, d1, d2):
         agg_var = variable_instance.aggregationvariable
-        main_variable = agg_var.main_variable
         logger.debug(
-            f"getting value for {main_variable} in {d1} {d1.timestamp()} {d2} {d2.timestamp()}"
+            f"getting value for {variable_instance} in {d1} {d1.timestamp()} ({variable_instance.device.aggregationdevice.calculation_start_offset}) {d2} {d2.timestamp()} ({variable_instance.device.aggregationdevice.calculation_end_offset})"
         )
         try:
             tmp = Variable.objects.read_multiple(
-                variable_ids=[main_variable.id],
-                time_min=d1.timestamp(),
-                time_max=d2.timestamp(),
+                variable_ids=[agg_var.variable.id],
+                time_min=d1.timestamp() + variable_instance.device.aggregationdevice.calculation_start_offset,
+                time_max=d2.timestamp() + variable_instance.device.aggregationdevice.calculation_end_offset,
                 time_in_ms=True,
                 time_max_excluded=True,
             )
-            tmpCount = len(tmp[main_variable.id]) if main_variable.id in tmp else 0
-            logger.debug(f"get values for {main_variable.id} : {tmpCount}")
+            tmpCount = len(tmp[agg_var.variable.id]) if agg_var.variable.id in tmp else 0
+            logger.debug(f"get values for {variable_instance} : {tmpCount}")
         except AttributeError:
             tmp = {}
         values = []
-        if main_variable.id in tmp:
-            for v in tmp[main_variable.id]:
+        if agg_var.variable.id in tmp:
+            for v in tmp[agg_var.variable.id]:
                 values.append(v[1])
-            type_str = agg_var.period.type_choices[agg_var.period.type][1]
+            type_str = variable_instance.device.aggregationdevice.type_choices[variable_instance.device.aggregationdevice.type][1]
             if type_str == "min":
-                p = str(agg_var.period.property)
+                p = str(variable_instance.device.aggregationdevice.property)
                 if p == "" or p is None or p == "None":
                     res = min(values)
                 elif p.startswith("<"):
@@ -226,8 +212,7 @@ class GenericDevice(GenericHandlerDevice):
                         res = min_pass(values, p, "gt")
                     except ValueError:
                         logger.warning(
-                            "Period field %s property after < is not a float : %s"
-                            % (agg_var.period, agg_var.period.property)
+                            f"Period field {variable_instance.device.aggregationdevice} property after < is not a float : {variable_instance.device.aggregationdevice.property}"
                         )
                         res = None
                 else:
@@ -236,12 +221,11 @@ class GenericDevice(GenericHandlerDevice):
                         res = min_pass(values, p, "gte")
                     except ValueError:
                         logger.warning(
-                            "Period field %s property is not a float : %s"
-                            % (agg_var.period, agg_var.period.property)
+                            f"Period field {variable_instance.device.aggregationdevice} property is not a float : {variable_instance.device.aggregationdevice.property}"
                         )
                         res = None
             elif type_str == "max":
-                p = str(agg_var.period.property)
+                p = str(variable_instance.device.aggregationdevice.property)
                 if p == "" or p is None or p == "None":
                     res = max(values)
                 elif p.startswith(">"):
@@ -250,8 +234,7 @@ class GenericDevice(GenericHandlerDevice):
                         res = max_pass(values, p, "lt")
                     except ValueError:
                         logger.warning(
-                            "Period field %s property after > is not a float : %s"
-                            % (agg_var.period, agg_var.period.property)
+                            f"Period field {variable_instance.device.aggregationdevice} property after > is not a float : {variable_instance.device.aggregationdevice.property}"
                         )
                         res = None
                 else:
@@ -260,8 +243,7 @@ class GenericDevice(GenericHandlerDevice):
                         res = max_pass(values, p, "lte")
                     except ValueError:
                         logger.warning(
-                            "Period field %s property is not a float : %s"
-                            % (agg_var.period, agg_var.period.property)
+                            f"Period field {variable_instance.device.aggregationdevice} property is not a float : {variable_instance.device.aggregationdevice.property}"
                         )
                         res = None
             elif type_str == "total":
@@ -290,11 +272,11 @@ class GenericDevice(GenericHandlerDevice):
                 res = len(values)
             elif type_str == "count value":
                 try:
-                    p = float(agg_var.period.property)
+                    p = float(variable_instance.device.aggregationdevice.property)
                     res = values.count(p)
                 except ValueError:
                     logger.warning(
-                        "Period field %s property is not a float" % agg_var.period
+                        f"Period field {variable_instance.device.aggregationdevice} property is not a float"
                     )
                     res = None
             elif type_str == "range":
@@ -326,7 +308,7 @@ class GenericDevice(GenericHandlerDevice):
                 res = None
 
             logger.debug(
-                f"read {res} for {main_variable} in {d1} {d1.timestamp()} {d2} {d2.timestamp()}"
+                f"read {res} for {agg_var.variable} in {d1} {d1.timestamp()} {d2} {d2.timestamp()}"
             )
             return res
         else:
