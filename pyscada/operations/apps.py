@@ -32,9 +32,16 @@ class PyScadaOperationsConfig(AppConfig):
                 },
             )
 
-            ds, _ = DataSource.objects.get_or_create(datasource_model=dsm)
+            if not OperationsDataSource.objects.count():
+                if DataSource.objects.filter(datasource_model=dsm).count():
+                    ds, _ = DataSource.objects.get_or_create(datasource_model=dsm)
+                else:
+                    ds = sDataSource.objects.filter(datasource_model=dsm).first()
 
-            ldse, _ = OperationsDataSource.objects.get_or_create(datasource=ds)
+                ldse, _ = OperationsDataSource.objects.get_or_create(
+                    datasource=ds
+                )
+
         except ProgrammingError:
             pass
         except OperationalError:
