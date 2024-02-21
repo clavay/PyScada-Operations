@@ -311,7 +311,9 @@ class OperationsDataSource(models.Model):
 
                     # eval
                     for v_id in variable_ids:
-                        if Variable.objects.get(id=v_id).device == device:
+                        var = Variable.objects.get(id=v_id)
+                        if var.device == device:
+                            time_max_tmp = time_max
                             if v_id not in output:
                                 output[v_id] = []
                             if evaluated_device is not None:
@@ -322,6 +324,11 @@ class OperationsDataSource(models.Model):
                                 )
                                 logger.debug(f"append {timestamp} {evaluated_device}")
                                 output[v_id].append([timestamp, evaluated_device])
+                                time_max_tmp = min(time_max_tmp, timestamp)
+                            if query_first_value:
+                                last_value = self.last_value(variable=var, time_max=time_max_tmp)
+                                if last_value is not None:
+                                    output[v_id].append(last_value)
                     # d1 = d1 + td
                     if evaluated_device is not None:
                         j += 1
@@ -393,7 +400,9 @@ class OperationsDataSource(models.Model):
 
                         # eval
                         for v_id in variable_ids:
-                            if Variable.objects.get(id=v_id).device == device:
+                            var = Variable.objects.get(id=v_id)
+                            if var.device == device:
+                                time_max_tmp = time_max
                                 if v_id not in output:
                                     output[v_id] = []
                                 if evaluated_device is not None:
@@ -402,6 +411,11 @@ class OperationsDataSource(models.Model):
                                         f"append {timestamp} {evaluated_device} {time_in_ms}"
                                     )
                                     output[v_id].append([timestamp, evaluated_device])
+                                    time_max_tmp = min(time_max_tmp, timestamp)
+                                if query_first_value:
+                                    last_value = self.last_value(variable=var, time_max=time_max_tmp)
+                                    if last_value is not None:
+                                        output[v_id].append(last_value)
                         if evaluated_device is not None:
                             j += 1
                         if quantity is not None and quantity <= j:
