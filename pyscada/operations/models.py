@@ -129,10 +129,10 @@ class OperationsDataSource(models.Model):
         read_value = None
         logger.debug(kwargs)
         if "variable" in kwargs:
-            variable = kwargs["variable"]
+            variable = kwargs.pop("variable")
             logger.debug(variable.device.operationsdevice.get_variable_ids())
-            time_min = kwargs["time_min"] if "time_min" in kwargs else 0
-            time_max = kwargs["time_max"] if "time_max" in kwargs else time()
+            time_min = kwargs.pop("time_min") if "time_min" in kwargs else 0
+            time_max = kwargs.pop("time_max") if "time_max" in kwargs else time()
             result = self.query_data(
                 variable_ids=[variable.id],
                 time_min=time_min,
