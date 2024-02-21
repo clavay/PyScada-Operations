@@ -175,6 +175,8 @@ class OperationsDataSource(models.Model):
         global global_time_max
         global global_time_max_excluded
         m_o = device.operationsdevice.master_operation
+        if device.id not in self.parsed_devices:
+            return None
         parsed = self.parsed_devices[device.id]
         if time_in_ms:
             time_min = time_min / 1000
