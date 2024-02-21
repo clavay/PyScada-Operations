@@ -223,7 +223,10 @@ class GenericDevice(GenericHandlerDevice):
             type_str = variable_instance.device.aggregationdevice.type_choices[
                 variable_instance.device.aggregationdevice.type
             ][1]
-            if type_str == "min":
+            if len(values) == 0:
+                logger.debug(f"No values for {variable_instance} in [{d1.timestamp() + variable_instance.device.aggregationdevice.calculation_start_offset}, {d2.timestamp() + variable_instance.device.aggregationdevice.calculation_end_offset}]")
+                res = None
+            elif type_str == "min":
                 p = str(variable_instance.device.aggregationdevice.property)
                 if p == "" or p is None or p == "None":
                     res = min(values)
