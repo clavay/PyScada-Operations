@@ -273,8 +273,8 @@ class OperationsDataSource(models.Model):
                     )
                     continue
 
-                quantity = self.period_item.period_diff_quantity(d1, d2)
-                logger.debug(f"Valid range : {d1} - {d2} - {quantity}")
+                period_diff_quantity = self.period_item.period_diff_quantity(d1, d2)
+                logger.debug(f"Valid range : {d1} - {d2} - {period_diff_quantity}")
 
                 i = j = 0
                 stop = False
