@@ -12,6 +12,7 @@ from pyscada.models import (
     Variable,
     Device,
 )
+from . import PROTOCOL_ID
 
 from time import time
 from datetime import datetime, timedelta, date
@@ -497,6 +498,8 @@ class OperationsDevice(models.Model):
         super().clean()
         if self.synchronisation == 1 and self.trigger is None:
             raise ValidationError("Select a trigger variable.")
+        elif self.synchronisation == 1 and self.trigger.device.protocol.id == PROTOCOL_ID:
+            raise ValidationError("Select a trigger variable which is not from an operation device.")
         if self.synchronisation == 0 and self.period is None:
             raise ValidationError("Enter a period.")
 
