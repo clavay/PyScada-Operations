@@ -5,7 +5,7 @@ from .. import PROTOCOL_ID
 from pyscada.operations.models import Period
 from pyscada.device import GenericHandlerDevice
 from pyscada.models import Variable
-
+from pyscada.utils import min_pass, max_pass
 
 from django.conf import settings
 from django.utils.timezone import now, make_aware, is_naive
