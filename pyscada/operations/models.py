@@ -77,6 +77,7 @@ class OperationsDataSource(models.Model):
     parsed_variables = []
     evaluated_variables = []
     time_max = 0
+    time_max_tmp = {}
 
     def parse_device(self, device):
         """
@@ -87,10 +88,10 @@ class OperationsDataSource(models.Model):
                 logger.warning(f"Cannot parse non operations device : {device}")
                 return False
             if device.id not in self.parsed_devices:
-                logger.debug(f"parsing : {device.operationsdevice.master_operation}")
                 self.parsed_devices[device.id] = self.inst.parse(
                     str(device.operationsdevice.master_operation)
                 )
+                logger.debug(f"parsing {device} : {device.operationsdevice.master_operation} - {self.parsed_devices}")
         except Exception as e:
             logger.warning(
                 f"{device} device - simple eval error for master operation {device.operationsdevice.master_operation} : {e}"
@@ -128,23 +129,22 @@ class OperationsDataSource(models.Model):
     def last_value(self, **kwargs):
         read_time = None
         read_value = None
-        logger.debug(kwargs)
         if "variable" in kwargs:
             variable = kwargs.pop("variable")
             logger.debug(variable.device.operationsdevice.get_variable_ids())
             time_min = kwargs.pop("time_min") if "time_min" in kwargs else 0
             time_max = kwargs.pop("time_max") if "time_max" in kwargs else time()
+            time_in_ms = kwargs.pop("time_in_ms") if "time_in_ms" in kwargs else True
             result = self.query_data(
                 variable_ids=[variable.id],
                 time_min=time_min,
                 time_max=time_max,
-                time_in_ms=False,
+                time_in_ms=time_in_ms,
                 order="desc",
                 quantity=1,
                 **kwargs,
             )
             if variable.id in result and len(result[variable.id]):
-                logger.info(result)
                 read_time = result[variable.id][-1][0]
                 read_value = result[variable.id][-1][1]
                 logger.debug(
@@ -177,6 +177,7 @@ class OperationsDataSource(models.Model):
         global global_time_max_excluded
         m_o = device.operationsdevice.master_operation
         if device.id not in self.parsed_devices:
+            logger.debug(f"device {device} not parsed")
             return None
         parsed = self.parsed_devices[device.id]
         if time_in_ms:
@@ -196,7 +197,6 @@ class OperationsDataSource(models.Model):
 
     def query_data(self, quantity=None, order="asc", **kwargs):
         t_start = time()
-        logger.debug(kwargs)
         output = {}
         if order not in ["asc", "desc"]:
             logger.warning(f"Wrong order to query data : {order}")
@@ -220,7 +220,7 @@ class OperationsDataSource(models.Model):
         logger.debug(f"Operations read for {variable_ids} {time_in_ms}")
 
         # parse master and sub operation
-        self.parsed_devices = {}
+        #self.parsed_devices = {}
         for v_id in variable_ids:
             self.parse_device(Variable.objects.get(id=v_id).device)
 
@@ -314,7 +314,7 @@ class OperationsDataSource(models.Model):
                     for v_id in variable_ids:
                         var = Variable.objects.get(id=v_id)
                         if var.device == device:
-                            time_max_tmp = time_max
+                            self.time_max_tmp[v_id] = time_max
                             if v_id not in output:
                                 output[v_id] = []
                             if evaluated_device is not None:
@@ -325,11 +325,7 @@ class OperationsDataSource(models.Model):
                                 )
                                 logger.debug(f"append {timestamp} {evaluated_device}")
                                 output[v_id].append([timestamp, evaluated_device])
-                                time_max_tmp = min(time_max_tmp, timestamp)
-                            if query_first_value:
-                                last_value = self.last_value(variable=var, time_max=time_max_tmp)
-                                if last_value is not None:
-                                    output[v_id].append(last_value)
+                                self.time_max_tmp[v_id] = min(self.time_max_tmp[v_id], t_from)
                     # d1 = d1 + td
                     if evaluated_device is not None:
                         j += 1
@@ -354,35 +350,35 @@ class OperationsDataSource(models.Model):
                     )
                     continue
                 logger.debug(
-                    f"reading values of trigger variable {trigger_variable} in {time_min}, {time_max} as time_in_ms {False} without first value"
+                    f"reading values of trigger variable {trigger_variable} in {time_min}, {time_max} as time_in_ms False without first value"
                 )
                 trigger_data = Variable.objects.read_multiple(
                     variable_ids=[trigger_variable.id],
                     time_min=time_min,
                     time_max=time_max,
-                    time_in_ms=False,
+                    time_in_ms=True,
                     query_first_value=False,
                 )
                 if trigger_variable.id in trigger_data:
                     logger.debug(len(trigger_data[trigger_variable.id]))
-                    logger.debug(trigger_data[trigger_variable.id])
+#                    logger.debug(trigger_data[trigger_variable.id])
                     data_length = len(trigger_data[trigger_variable.id])
                     j = 0
                     for i in range(data_length):
                         if order == "asc":
-                            t_from = trigger_data[trigger_variable.id][i][0]
+                            t_from = trigger_data[trigger_variable.id][i][0] / 1000
                             if i + 1 < data_length:
-                                t_to = trigger_data[trigger_variable.id][i + 1][0]
+                                t_to = trigger_data[trigger_variable.id][i + 1][0] / 1000
                             else:
                                 t_to = time_max
                         elif order == "desc":
                             t_from = trigger_data[trigger_variable.id][
                                 data_length - i - 1
-                            ][0]
+                            ][0] / 1000
                             if i > 0:
                                 t_to = trigger_data[trigger_variable.id][
                                     data_length - i
-                                ][0]
+                                ][0] / 1000
                             else:
                                 t_to = time_max
                         logger.debug(f"{i} {t_from} {t_to}")
@@ -403,20 +399,14 @@ class OperationsDataSource(models.Model):
                         for v_id in variable_ids:
                             var = Variable.objects.get(id=v_id)
                             if var.device == device:
-                                time_max_tmp = time_max
+                                if v_id not in self.time_max_tmp:
+                                    self.time_max_tmp[v_id] = time_max
                                 if v_id not in output:
                                     output[v_id] = []
                                 if evaluated_device is not None:
                                     timestamp = t_from * 1000 if time_in_ms else t_from
-                                    logger.debug(
-                                        f"append {timestamp} {evaluated_device} {time_in_ms}"
-                                    )
                                     output[v_id].append([timestamp, evaluated_device])
-                                    time_max_tmp = min(time_max_tmp, timestamp)
-                                if query_first_value:
-                                    last_value = self.last_value(variable=var, time_max=time_max_tmp)
-                                    if last_value is not None:
-                                        output[v_id].append(last_value)
+                                    self.time_max_tmp[v_id] = min(self.time_max_tmp[v_id], t_from, time_max)
                         if evaluated_device is not None:
                             j += 1
                         if quantity is not None and quantity <= j:
@@ -430,7 +420,16 @@ class OperationsDataSource(models.Model):
                     logger.debug(
                         f"Trigger variable {trigger_variable} has no data in {time_min} - {time_max} range"
                     )
-
+            for v_id in variable_ids:
+                var = Variable.objects.get(id=v_id)
+                if var.device == device:
+                    if query_first_value:
+                        tm = self.time_max_tmp[v_id] if v_id in self.time_max_tmp else time()
+                        last_value = self.last_value(variable=var, time_max=tm)
+                        if last_value is not None:
+                            if v_id not in output:
+                                output[v_id] = []
+                            output[v_id].insert(0, last_value)
         return output
 
     def write_multiple(self, **kwargs):
@@ -597,15 +596,15 @@ class Period(object):
             logger.warning("Use get_valid_range with d_start > d_end")
             return None
         if self.start_from == d1:
-            logger.info("strart from is d1")
+            logger.debug("strart from is d1")
             d_start = 0
         else:
-            logger.info(f"{self.start_from} {d1} {self.period_str}")
-            logger.info(d1 - self.start_from)
-            logger.info((d1 - self.start_from).total_seconds())
+            logger.debug(f"{self.start_from} {d1} {self.period_str}")
+            logger.debug(d1 - self.start_from)
+            logger.debug((d1 - self.start_from).total_seconds())
             # (d2 - d1).total_seconds() / 60 / 60
             d_start = self.period_diff_quantity(self.start_from, d1)
-            logger.info(f"strart from is not d1, it is {d_start}")
+            logger.debug(f"strart from is not d1, it is {d_start}")
             if d_start is not None:
                 if d_start != int(d_start):
                     d_start = int(d_start) + 1
@@ -615,7 +614,7 @@ class Period(object):
                 logger.debug("d_start - start_from < period_factor*period")
                 return None
         d_end = self.period_diff_quantity(self.start_from, d2)
-        logger.info(d_end)
+        logger.debug(d_end)
         if d_end is not None:
             d_end = int(d_end)
         else:
@@ -642,7 +641,7 @@ class Period(object):
         dd_start = d_start * td + self.start_from
         dd_end = d_end * td + self.start_from
 
-        logger.info(f"{d_start} {d_end} {dd_start} {dd_end}")
+        logger.debug(f"{d_start} {d_end} {dd_start} {dd_end}")
 
         if dd_end > d2:
             logger.debug("%s > %s" % (dd_end, d2))
