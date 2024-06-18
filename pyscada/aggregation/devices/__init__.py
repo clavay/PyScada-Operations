@@ -327,6 +327,12 @@ class GenericDevice(GenericHandlerDevice):
                     res = None
             elif type_str == "distinct count":
                 res = len(set(values))
+            elif type_str == "index increment":
+                t_max = d1.timestamp() + variable_instance.device.aggregationdevice.calculation_start_offset
+                if agg_var.variable.query_prev_value(time_max=t_max, time_max_excluded=True):
+                    res = values[-1] - agg_var.variable.prev_value
+                else:
+                    res = None
             else:
                 logger.warning("Periodic field type unknown")
                 res = None

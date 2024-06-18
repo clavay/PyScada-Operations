@@ -58,6 +58,7 @@ class AggregationDevice(models.Model):
         (12, "step"),
         (13, "change count"),
         (14, "distinct count"),
+        (15, "index increment"),
     )
     type = models.SmallIntegerField(
         blank=True,
@@ -78,7 +79,8 @@ class AggregationDevice(models.Model):
         "Range: Difference between maximum and minimum values of a field<br>"
         "Step: Minimal interval between values of a field<br>"
         "Change count: Number of times the field’s value changes<br>"
-        "Distinct count: Number of unique values in a field",
+        "Distinct count: Number of unique values in a field<br>"
+        "Index increment: Incrementation of an index with previous known value",
     )
     property = models.CharField(
         default="",
