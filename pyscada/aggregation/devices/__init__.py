@@ -158,11 +158,10 @@ class GenericDevice(GenericHandlerDevice):
         variable_instance.date_saved = now()
         output.append(variable_instance)
 
-        if len(output):
-            agg_var.last_check = output[-1].date_saved  # + td
+        if variable_instance in output and len(variable_instance.cached_values_to_write):
+            agg_var.last_check = d2
         else:
             logger.debug("Nothing to add")
-            agg_var.last_check = min(d1, d2, now())
 
         # Add partial last value when there is data but the period is not elapsed
         # do not use this data in last check to recalculate it again till the period is elapsed
