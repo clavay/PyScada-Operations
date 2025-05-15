@@ -42,7 +42,8 @@ class GenericDevice(GenericHandlerDevice):
 
         if self.before_read():
             for item in variables_dict.values():
-                output += self.read_data(item)
+                if item.readable:
+                    output += self.read_data(item)
         self.after_read()
         return output
 
@@ -74,8 +75,8 @@ class GenericDevice(GenericHandlerDevice):
         self, variable_instance, d1, d2, force_write=False, add_partial_info=False
     ):
         # erase cached values from other Calculated Variables with same store value
+        #variable_instance.update_values([], [], erase_cache=True) # TODO : still needed ?
         agg_var = variable_instance.aggregationvariable
-        variable_instance.update_values([], [], erase_cache=True)
         logger.debug(f"Check period of {variable_instance} [{d1} to {d2}]")
         agg_var.state = f"Checking [{d1} to {d2}]"
         agg_var.state = agg_var.state[0:100]
@@ -150,7 +151,6 @@ class GenericDevice(GenericHandlerDevice):
                 if calc_value is not None and variable_instance.update_values(
                     [calc_value],
                     [td1 + variable_instance.device.aggregationdevice.timestamp_offset],
-                    erase_cache=False,
                 ):
                     to_store = True
             d1 = d1 + td
@@ -175,7 +175,6 @@ class GenericDevice(GenericHandlerDevice):
                 variable_instance.update_values(
                     [calc_value],
                     [td2 + variable_instance.device.aggregationdevice.timestamp_offset],
-                    erase_cache=False,
                 )
 
         # Save recorded data elements to DB
