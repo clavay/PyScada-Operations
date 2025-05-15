@@ -7,7 +7,9 @@ from django.utils.translation import gettext_lazy as _
 from django.db.utils import ProgrammingError, OperationalError
 
 from . import __app_name__
+import logging
 
+logger = logging.getLogger(__name__)
 
 class PyScadaOperationsConfig(AppConfig):
     name = "pyscada." + __app_name__.lower()
@@ -17,6 +19,9 @@ class PyScadaOperationsConfig(AppConfig):
 
     def ready(self):
         from . import signals
+
+    def pyscada_app_init(self):
+        logger.debug(f"{__app_name__} init app")
 
         try:
             from pyscada.models import DataSourceModel, DataSource
