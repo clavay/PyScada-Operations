@@ -13,6 +13,8 @@ from pyscada.models import (
     Device,
 )
 
+from . import PROTOCOL_ID
+
 from time import time
 from datetime import datetime, date
 from dateutil import relativedelta
@@ -178,6 +180,8 @@ class AggregationVariable(models.Model):
     state = models.CharField(blank=True, null=True, max_length=100)
 
     fk_name = "aggregation_variable"
+
+    protocol_id = PROTOCOL_ID
 
     class FormSet(BaseInlineFormSet):
         def add_fields(self, form, index):

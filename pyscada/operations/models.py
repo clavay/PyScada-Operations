@@ -548,6 +548,8 @@ class OperationsVariable(models.Model):
         ),
     )
 
+    protocol_id = PROTOCOL_ID
+
     @property
     def parent_variable(self):
         try:
