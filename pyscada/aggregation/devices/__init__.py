@@ -8,7 +8,7 @@ from pyscada.models import Variable
 from pyscada.utils import min_pass, max_pass
 
 from django.conf import settings
-from django.utils.timezone import now, make_aware, is_naive
+from django.utils.timezone import now, make_aware, is_naive, get_fixed_timezone
 
 try:
     import numpy as np
@@ -18,6 +18,7 @@ except ImportError:
     driver_ok = False
 
 from time import time
+from datetime import datetime
 
 import logging
 
@@ -59,17 +60,35 @@ class GenericDevice(GenericHandlerDevice):
         force_write=False,
         add_partial_info=False,
         ignore_last_check=False,
+        force_end_now=False,
     ):
         last_check = variable_instance.aggregationvariable.last_check
         start_from = variable_instance.device.aggregationdevice.start_from
+
+        # if the variable used for the aggregation has no value, return empty result
+        origin_var = variable_instance.aggregationvariable.variable
+        if not origin_var.query_prev_value():
+            return []
+
+        end_to = now()
+        if not force_end_now:
+            # use the last value of the variable used for the aggregation
+            tzinfo = get_fixed_timezone(0) # get the timezone from django settings
+            period_item = Period(
+                variable_instance.device.aggregationdevice.start_from,
+                variable_instance.device.aggregationdevice.period_factor,
+                variable_instance.device.aggregationdevice.period_choices[
+                    variable_instance.device.aggregationdevice.period
+                ][1],
+            )
+            end_to = min(datetime.fromtimestamp(origin_var.timestamp_old, tzinfo) + period_item.add_timedelta(), now())
         if last_check is not None and not ignore_last_check:
             return self.check_period(
-                variable_instance, last_check, now(), force_write, add_partial_info
+                variable_instance, last_check, end_to, force_write, add_partial_info
             )
-        else:
-            return self.check_period(
-                variable_instance, start_from, now(), force_write, add_partial_info
-            )
+        return self.check_period(
+            variable_instance, start_from, end_to, force_write, add_partial_info
+        )
 
     def check_period(
         self, variable_instance, d1, d2, force_write=False, add_partial_info=False
@@ -145,6 +164,7 @@ class GenericDevice(GenericHandlerDevice):
                 v_stored = {}
             if not force_write and len(v_stored) and variable_instance.id in v_stored:
                 logger.debug(f"Value already exist for {agg_var} in {d1} - {d1 + td}")
+                agg_var.last_check = d2
                 pass
             else:
                 calc_value = self.get_value(variable_instance, d1, d1 + td)
