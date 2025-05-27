@@ -73,7 +73,7 @@ class GenericDevice(GenericHandlerDevice):
         end_to = now()
         if not force_end_now:
             # use the last value of the variable used for the aggregation
-            tzinfo = get_fixed_timezone(0) # get the timezone from django settings
+            tzinfo = get_fixed_timezone(0)  # get the timezone from django settings
             period_item = Period(
                 variable_instance.device.aggregationdevice.start_from,
                 variable_instance.device.aggregationdevice.period_factor,
@@ -81,7 +81,11 @@ class GenericDevice(GenericHandlerDevice):
                     variable_instance.device.aggregationdevice.period
                 ][1],
             )
-            end_to = min(datetime.fromtimestamp(origin_var.timestamp_old, tzinfo) + period_item.add_timedelta(), now())
+            end_to = min(
+                datetime.fromtimestamp(origin_var.timestamp_old, tzinfo)
+                + period_item.add_timedelta(),
+                now(),
+            )
         if last_check is not None and not ignore_last_check:
             return self.check_period(
                 variable_instance, last_check, end_to, force_write, add_partial_info
@@ -94,7 +98,7 @@ class GenericDevice(GenericHandlerDevice):
         self, variable_instance, d1, d2, force_write=False, add_partial_info=False
     ):
         # erase cached values from other Calculated Variables with same store value
-        #variable_instance.update_values([], [], erase_cache=True) # TODO : still needed ?
+        # variable_instance.update_values([], [], erase_cache=True) # TODO : still needed ?
         agg_var = variable_instance.aggregationvariable
         logger.debug(f"Check period of {variable_instance} [{d1} to {d2}]")
         agg_var.state = f"Checking [{d1} to {d2}]"
@@ -178,7 +182,9 @@ class GenericDevice(GenericHandlerDevice):
         variable_instance.date_saved = now()
         output.append(variable_instance)
 
-        if variable_instance in output and len(variable_instance.cached_values_to_write):
+        if variable_instance in output and len(
+            variable_instance.cached_values_to_write
+        ):
             agg_var.last_check = d2
         else:
             logger.debug("Nothing to add")
@@ -242,7 +248,9 @@ class GenericDevice(GenericHandlerDevice):
                 variable_instance.device.aggregationdevice.type
             ][1]
             if len(values) == 0:
-                logger.debug(f"No values for {variable_instance} in [{d1.timestamp() + variable_instance.device.aggregationdevice.calculation_start_offset}, {d2.timestamp() + variable_instance.device.aggregationdevice.calculation_end_offset}]")
+                logger.debug(
+                    f"No values for {variable_instance} in [{d1.timestamp() + variable_instance.device.aggregationdevice.calculation_start_offset}, {d2.timestamp() + variable_instance.device.aggregationdevice.calculation_end_offset}]"
+                )
                 res = None
             elif type_str == "min":
                 p = str(variable_instance.device.aggregationdevice.property)
@@ -346,8 +354,13 @@ class GenericDevice(GenericHandlerDevice):
             elif type_str == "distinct count":
                 res = len(set(values))
             elif type_str == "index increment":
-                t_max = d1.timestamp() + variable_instance.device.aggregationdevice.calculation_start_offset
-                if agg_var.variable.query_prev_value(time_max=t_max, time_max_excluded=True):
+                t_max = (
+                    d1.timestamp()
+                    + variable_instance.device.aggregationdevice.calculation_start_offset
+                )
+                if agg_var.variable.query_prev_value(
+                    time_max=t_max, time_max_excluded=True
+                ):
                     res = values[-1] - agg_var.variable.prev_value
                 else:
                     res = None

@@ -11,6 +11,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class PyScadaOperationsConfig(AppConfig):
     name = "pyscada." + __app_name__.lower()
     verbose_name = _("PyScada " + __app_name__)
@@ -43,9 +44,7 @@ class PyScadaOperationsConfig(AppConfig):
                 else:
                     ds, _ = DataSource.objects.get_or_create(datasource_model=dsm)
 
-                ldse, _ = OperationsDataSource.objects.get_or_create(
-                    datasource=ds
-                )
+                ldse, _ = OperationsDataSource.objects.get_or_create(datasource=ds)
 
         except ProgrammingError:
             pass
