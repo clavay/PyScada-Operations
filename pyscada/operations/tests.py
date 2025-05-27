@@ -87,7 +87,9 @@ class ReadOperationVariableTest(TestCase):
             query_first_value=True,
             time_max_excluded=True,
         )
-        self.assertEqual(result, {"timestamp": 2.0, v.id: [[2.0, 200.0]]})
+        self.assertEqual(
+            result, {"timestamp": 2.0, "date_saved_max": 0, v.id: [[2.0, 200.0]]}
+        )
 
         logger.debug("test_variable_read_on_trigger 2")
         result = Variable.objects.read_multiple(
@@ -98,7 +100,7 @@ class ReadOperationVariableTest(TestCase):
             query_first_value=False,
             time_max_excluded=True,
         )
-        self.assertEqual(result, {"timestamp": 0})
+        self.assertEqual(result, {"timestamp": 0, "date_saved_max": 0})
 
         logger.debug("test_variable_read_on_trigger 3")
         result = Variable.objects.read_multiple(
@@ -110,7 +112,12 @@ class ReadOperationVariableTest(TestCase):
             time_max_excluded=False,
         )
         self.assertEqual(
-            result, {"timestamp": 3.0, v.id: [[2.0, 200.0], [3.0, 2000.0]]}
+            result,
+            {
+                "timestamp": 3.0,
+                "date_saved_max": 0,
+                v.id: [[2.0, 200.0], [3.0, 2000.0]],
+            },
         )
 
         logger.debug("test_variable_read_on_trigger 4")
@@ -122,7 +129,9 @@ class ReadOperationVariableTest(TestCase):
             query_first_value=False,
             time_max_excluded=False,
         )
-        self.assertEqual(result, {"timestamp": 3.0, v.id: [[3.0, 2000.0]]})
+        self.assertEqual(
+            result, {"timestamp": 3.0, "date_saved_max": 0, v.id: [[3.0, 2000.0]]}
+        )
 
     def test_variable_read_on_calendar(self):
         """Variable read multiple test"""
@@ -138,7 +147,9 @@ class ReadOperationVariableTest(TestCase):
             query_first_value=True,
             time_max_excluded=True,
         )
-        self.assertEqual(result, {"timestamp": 2.0, v.id: [[2.0, 200.0]]})
+        self.assertEqual(
+            result, {"timestamp": 2.0, "date_saved_max": 0, v.id: [[2.0, 200.0]]}
+        )
 
         logger.debug("test_variable_read_on_calendar 2")
         result = Variable.objects.read_multiple(
@@ -149,7 +160,7 @@ class ReadOperationVariableTest(TestCase):
             query_first_value=False,
             time_max_excluded=True,
         )
-        self.assertEqual(result, {"timestamp": 0})
+        self.assertEqual(result, {"timestamp": 0, 'date_saved_max': 0})
 
         logger.debug("test_variable_read_on_calendar 3")
         result = Variable.objects.read_multiple(
@@ -161,7 +172,12 @@ class ReadOperationVariableTest(TestCase):
             time_max_excluded=False,
         )
         self.assertEqual(
-            result, {"timestamp": 3.0, v.id: [[2.0, 200.0], [3.0, 2000.0]]}
+            result,
+            {
+                "timestamp": 3.0,
+                "date_saved_max": 0,
+                v.id: [[2.0, 200.0], [3.0, 2000.0]],
+            },
         )
 
         logger.debug("test_variable_read_on_calendar 4")
@@ -173,7 +189,9 @@ class ReadOperationVariableTest(TestCase):
             query_first_value=False,
             time_max_excluded=False,
         )
-        self.assertEqual(result, {"timestamp": 3.0, v.id: [[3.0, 2000.0]]})
+        self.assertEqual(
+            result, {"timestamp": 3.0, "date_saved_max": 0, v.id: [[3.0, 2000.0]]}
+        )
 
         logger.debug("test_variable_read_on_calendar 5")
         result = Variable.objects.read_multiple(
@@ -184,7 +202,9 @@ class ReadOperationVariableTest(TestCase):
             query_first_value=True,
             time_max_excluded=False,
         )
-        self.assertEqual(result, {"timestamp": 2.0, v.id: [[2.0, 200.0]]})
+        self.assertEqual(
+            result, {"timestamp": 2.0, "date_saved_max": 0, v.id: [[2.0, 200.0]]}
+        )
 
         logger.debug("test_variable_read_on_calendar 6")
         result = Variable.objects.read_multiple(
@@ -199,5 +219,6 @@ class ReadOperationVariableTest(TestCase):
             result,
             {
                 "timestamp": 0,
+                "date_saved_max": 0,
             },
         )
