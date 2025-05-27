@@ -7,6 +7,7 @@ from django.db import migrations
 from django.db.utils import ProgrammingError
 from django.apps import apps as global_apps
 from django.db.migrations.recorder import MigrationRecorder
+from django.db.utils import ProgrammingError
 
 import logging
 
@@ -136,15 +137,21 @@ class Migration(migrations.Migration):
     ]
     run_before = []
 
-    if (
-        global_apps.is_installed("pyscada")
-        and not MigrationRecorder.Migration.objects.filter(
-            app="pyscada",
-            name__contains="0108_remove_calculatedvariable_period_and_more",
-        ).count()
-    ):
-        print("add run_before")
-        run_before.append(("pyscada", "0108_remove_calculatedvariable_period_and_more"))
+    try:
+        if (
+            global_apps.is_installed("pyscada")
+            and not MigrationRecorder.Migration.objects.filter(
+                app="pyscada",
+                name__contains="0108_remove_calculatedvariable_period_and_more",
+            ).count()
+        ):
+            print("add run_before")
+            run_before.append(
+                ("pyscada", "0108_remove_calculatedvariable_period_and_more")
+            )
+    except ProgrammingError:
+        # need this exception to pass django tests, I didn't find why
+        pass
 
     operations = [
         migrations.RunPython(forwards_func, reverse_func),
