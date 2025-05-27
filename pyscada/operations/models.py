@@ -29,9 +29,6 @@ global_time_max_excluded = True
 
 
 def get_variable_value(variable_id, use_date_saved=False, query_type="value"):
-    logger.debug(
-        f"{variable_id} {global_time_min} {global_time_max} {use_date_saved} {query_type}"
-    )
     kwargs = {
         "time_min": global_time_min,
         "time_max": global_time_max,
@@ -46,7 +43,6 @@ def get_variable_value(variable_id, use_date_saved=False, query_type="value"):
         )
     else:
         if v.query_prev_value(**kwargs):
-            logger.debug(f"prev value {v.prev_value} {kwargs}")
             if query_type == "timestamp":
                 return v.timestamp_old
             elif query_type == "value":
@@ -91,7 +87,9 @@ class OperationsDataSource(models.Model):
                 self.parsed_devices[device.id] = self.inst.parse(
                     str(device.operationsdevice.master_operation)
                 )
-                logger.debug(f"parsing {device} : {device.operationsdevice.master_operation} - {self.parsed_devices}")
+                logger.debug(
+                    f"parsing {device} : {device.operationsdevice.master_operation} - {self.parsed_devices}"
+                )
         except Exception as e:
             logger.warning(
                 f"{device} device - simple eval error for master operation {device.operationsdevice.master_operation} : {e}"
@@ -131,10 +129,40 @@ class OperationsDataSource(models.Model):
         read_value = None
         if "variable" in kwargs:
             variable = kwargs.pop("variable")
-            logger.debug(variable.device.operationsdevice.get_variable_ids())
             time_min = kwargs.pop("time_min") if "time_min" in kwargs else 0
             time_max = kwargs.pop("time_max") if "time_max" in kwargs else time()
-            time_in_ms = kwargs.pop("time_in_ms") if "time_in_ms" in kwargs else True
+            time_max_excluded = (
+                kwargs.pop("time_max_excluded")
+                if "time_max_excluded" in kwargs
+                else False
+            )
+            time_in_ms = kwargs.pop("time_in_ms") if "time_in_ms" in kwargs else False
+            logger.debug(
+                f"get last value for operation from variables {variable.device.operationsdevice.get_variable_ids()}"
+            )
+            time_min_operation_variables = time()
+            time_max_operation_variables = 0
+            for var_id in variable.device.operationsdevice.get_variable_ids():
+                var = Variable.objects.get(id=var_id)
+                result = Variable.objects.read_multiple(
+                    variable_ids=[var_id],
+                    time_min=time_min,
+                    time_max=time_max,
+                    time_in_ms=time_in_ms,
+                    query_first_value=False,
+                    time_max_excluded=time_max_excluded,
+                )
+                if var_id in result and len(result[var_id]):
+                    #                if var.query_prev_value(time_max=time_max, time_max_excluded=time_max_excluded):
+                    time_min_operation_variables = min(
+                        time_min_operation_variables, result[var_id][0][0]
+                    )
+                    time_max_operation_variables = max(
+                        time_max_operation_variables, result[var_id][-1][0]
+                    )
+            # time_min = kwargs.pop("time_min") if "time_min" in kwargs else time_min_operation_variables
+            time_min = time_min_operation_variables
+            time_max = time_max_operation_variables
             result = self.query_data(
                 variable_ids=[variable.id],
                 time_min=time_min,
@@ -142,6 +170,7 @@ class OperationsDataSource(models.Model):
                 time_in_ms=time_in_ms,
                 order="desc",
                 quantity=1,
+                time_max_excluded=False,
                 **kwargs,
             )
             if variable.id in result and len(result[variable.id]):
@@ -211,16 +240,17 @@ class OperationsDataSource(models.Model):
         query_first_value = (
             kwargs.pop("query_first_value") if "query_first_value" in kwargs else False
         )
+        time_min_excluded = kwargs.get("time_min_excluded", False)
         time_max_excluded = kwargs.get("time_max_excluded", False)
         variable_ids = self.datasource.datasource_check(
             variable_ids, items_as_id=True, ids_model=Variable
         )
 
-        # ouput = {"timestamp": time() * 1000, "date_saved_max": time() * 1000}
+        # output = {"timestamp": time() * 1000, "date_saved_max": time() * 1000}
         logger.debug(f"Operations read for {variable_ids} {time_in_ms}")
 
         # parse master and sub operation
-        #self.parsed_devices = {}
+        # self.parsed_devices = {}
         for v_id in variable_ids:
             self.parse_device(Variable.objects.get(id=v_id).device)
 
@@ -228,9 +258,14 @@ class OperationsDataSource(models.Model):
 
         # iterate over time
         self.evaluated_devices = []
-        for d_id in self.parsed_devices:
-            logger.debug(d_id)
-            device = Device.objects.get(id=d_id)
+        output["timestamp"] = 0
+        for d_id in self.parsed_devices.copy():
+            self.time_max_tmp = {}
+            try:
+                device = Device.objects.get(id=d_id)
+            except Device.DoesNotExist:
+                self.parsed_devices.pop(d_id)
+                continue
             if device.operationsdevice.synchronisation == 0:
                 # calendar
                 logger.debug("calendar")
@@ -249,36 +284,42 @@ class OperationsDataSource(models.Model):
                 logger.debug(
                     f"{d1} {d2} {self.period_item.period_diff_quantity(d1, d2)}"
                 )
+                stop = False
 
                 if self.period_item.period_diff_quantity(d1, d2) is None:
                     logger.debug(
                         "No period in date interval : %s (%s %s)"
                         % (self.period_item, d1, d2)
                     )
-                    continue
+                    stop = True
+                else:
+                    td = self.period_item.add_timedelta()
 
-                td = self.period_item.add_timedelta()
+                    d = self.period_item.get_valid_range(d1, d2)
+                    if d is None:
+                        logger.debug(
+                            "No time range found [%s to %s] %s"
+                            % (d1, d2, self.period_item)
+                        )
+                        stop = True
+                    else:
+                        [d1, d2] = d
 
-                d = self.period_item.get_valid_range(d1, d2)
-                if d is None:
-                    logger.debug(
-                        "No time range found [%s to %s] %s" % (d1, d2, self.period_item)
-                    )
-                    continue
-                [d1, d2] = d
-
-                if self.period_item.period_diff_quantity(d1, d2) is None:
-                    logger.debug(
-                        "No period in new date interval : %s (%s %s)"
-                        % (self.period_item, d1, d2)
-                    )
-                    continue
-
-                period_diff_quantity = self.period_item.period_diff_quantity(d1, d2)
-                logger.debug(f"Valid range : {d1} - {d2} - {period_diff_quantity}")
+                        if self.period_item.period_diff_quantity(d1, d2) is None:
+                            logger.debug(
+                                "No period in new date interval : %s (%s %s)"
+                                % (self.period_item, d1, d2)
+                            )
+                            stop = True
+                        else:
+                            period_diff_quantity = (
+                                self.period_item.period_diff_quantity(d1, d2)
+                            )
+                            logger.debug(
+                                f"Valid range : {d1} - {d2} - {period_diff_quantity}"
+                            )
 
                 i = j = 0
-                stop = False
 
                 while not stop:
                     if order == "asc":
@@ -308,7 +349,8 @@ class OperationsDataSource(models.Model):
                             )
                             stop = True
                     #                            device, time_min=(d1 + (q)).timestamp(), time_max=(d1 + td).timestamp()
-                    logger.debug([dx.timestamp(), evaluated_device])
+
+                    t_from = dx.timestamp()
 
                     # eval
                     for v_id in variable_ids:
@@ -325,7 +367,12 @@ class OperationsDataSource(models.Model):
                                 )
                                 logger.debug(f"append {timestamp} {evaluated_device}")
                                 output[v_id].append([timestamp, evaluated_device])
-                                self.time_max_tmp[v_id] = min(self.time_max_tmp[v_id], t_from)
+                                self.time_max_tmp[v_id] = min(
+                                    self.time_max_tmp[v_id], t_from
+                                )
+                                output["timestamp"] = max(
+                                    output["timestamp"], timestamp
+                                )
                     # d1 = d1 + td
                     if evaluated_device is not None:
                         j += 1
@@ -350,7 +397,7 @@ class OperationsDataSource(models.Model):
                     )
                     continue
                 logger.debug(
-                    f"reading values of trigger variable {trigger_variable} in {time_min}, {time_max} as time_in_ms False without first value"
+                    f"reading values of trigger variable {trigger_variable} in {time_min}, {time_max} as time_in_ms True without first value"
                 )
                 trigger_data = Variable.objects.read_multiple(
                     variable_ids=[trigger_variable.id],
@@ -358,30 +405,40 @@ class OperationsDataSource(models.Model):
                     time_max=time_max,
                     time_in_ms=True,
                     query_first_value=False,
+                    time_max_excluded=time_max_excluded,
+                    time_min_excluded=time_min_excluded,
                 )
                 if trigger_variable.id in trigger_data:
                     logger.debug(len(trigger_data[trigger_variable.id]))
-#                    logger.debug(trigger_data[trigger_variable.id])
+                    #                    logger.debug(trigger_data[trigger_variable.id])
                     data_length = len(trigger_data[trigger_variable.id])
                     j = 0
                     for i in range(data_length):
                         if order == "asc":
                             t_from = trigger_data[trigger_variable.id][i][0] / 1000
                             if i + 1 < data_length:
-                                t_to = trigger_data[trigger_variable.id][i + 1][0] / 1000
+                                t_to = (
+                                    trigger_data[trigger_variable.id][i + 1][0] / 1000
+                                )
                             else:
                                 t_to = time_max
                         elif order == "desc":
-                            t_from = trigger_data[trigger_variable.id][
-                                data_length - i - 1
-                            ][0] / 1000
+                            t_from = (
+                                trigger_data[trigger_variable.id][data_length - i - 1][
+                                    0
+                                ]
+                                / 1000
+                            )
                             if i > 0:
-                                t_to = trigger_data[trigger_variable.id][
-                                    data_length - i
-                                ][0] / 1000
+                                t_to = (
+                                    trigger_data[trigger_variable.id][data_length - i][
+                                        0
+                                    ]
+                                    / 1000
+                                )
                             else:
                                 t_to = time_max
-                        logger.debug(f"{i} {t_from} {t_to}")
+
                         if t_from == t_to:
                             # Do not exclude time_max
                             tmp_time_max_excluded = time_max_excluded
@@ -393,7 +450,6 @@ class OperationsDataSource(models.Model):
                             time_max=t_to,
                             time_max_excluded=tmp_time_max_excluded,
                         )
-                        logger.debug([t_from, evaluated_device])
 
                         # eval
                         for v_id in variable_ids:
@@ -406,7 +462,12 @@ class OperationsDataSource(models.Model):
                                 if evaluated_device is not None:
                                     timestamp = t_from * 1000 if time_in_ms else t_from
                                     output[v_id].append([timestamp, evaluated_device])
-                                    self.time_max_tmp[v_id] = min(self.time_max_tmp[v_id], t_from, time_max)
+                                    self.time_max_tmp[v_id] = min(
+                                        self.time_max_tmp[v_id], t_from, time_max
+                                    )
+                                    output["timestamp"] = max(
+                                        output["timestamp"], timestamp
+                                    )
                         if evaluated_device is not None:
                             j += 1
                         if quantity is not None and quantity <= j:
@@ -420,16 +481,29 @@ class OperationsDataSource(models.Model):
                     logger.debug(
                         f"Trigger variable {trigger_variable} has no data in {time_min} - {time_max} range"
                     )
+
+            # add the last value before the first value found for each variable
             for v_id in variable_ids:
                 var = Variable.objects.get(id=v_id)
                 if var.device == device:
                     if query_first_value:
-                        tm = self.time_max_tmp[v_id] if v_id in self.time_max_tmp else time()
-                        last_value = self.last_value(variable=var, time_max=tm)
+                        tm = (
+                            self.time_max_tmp[v_id]
+                            if v_id in self.time_max_tmp
+                            else time_max
+                        )
+                        last_value = self.last_value(
+                            variable=var, time_max=tm, time_max_excluded=True
+                        )
                         if last_value is not None:
                             if v_id not in output:
                                 output[v_id] = []
                             output[v_id].insert(0, last_value)
+                            output["timestamp"] = max(
+                                output["timestamp"], last_value[0]
+                            )
+            # output["date_saved_max"] = Variable.objects.read_multiple(variable_ids=device.operationsdevice.get_variable_ids(), time_min=time_min, time_max=time_max, time_min_excluded=time_min_excluded, time_max_excluded=time_max_excluded, time_in_ms=time_in_ms).get("date_saved_max", 0)
+
         return output
 
     def write_multiple(self, **kwargs):
@@ -497,8 +571,12 @@ class OperationsDevice(models.Model):
         super().clean()
         if self.synchronisation == 1 and self.trigger is None:
             raise ValidationError("Select a trigger variable.")
-        elif self.synchronisation == 1 and self.trigger.device.protocol.id == PROTOCOL_ID:
-            raise ValidationError("Select a trigger variable which is not from an operation device.")
+        elif (
+            self.synchronisation == 1 and self.trigger.device.protocol.id == PROTOCOL_ID
+        ):
+            raise ValidationError(
+                "Select a trigger variable which is not from an operation device."
+            )
         if self.synchronisation == 0 and self.period is None:
             raise ValidationError("Enter a period.")
 
